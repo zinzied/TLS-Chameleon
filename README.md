@@ -26,9 +26,13 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 
 ## 📦 Install
 
+You can install `TLS-Chameleon` directly from PyPI:
+
 ```bash
 pip install tls-chameleon[curl]
 ```
+
+> **Note**: The `[curl]` extra is required for TLS fingerprint spoofing.
 
 ## ⚡ Quick Start
 
