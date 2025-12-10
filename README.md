@@ -1,9 +1,8 @@
 # TLS-Chameleon
 
-<img width="100%" alt="TLSChameleon" src="https://github.com/user-attachments/assets/b33d3c5d-5a23-4971-8c7a-6f8dbee38313" />
+![TLS-Chameleon](TLSChameleom.png)
 
-**The "Batteries-Included" Anti-Fingerprinting HTTP Client.**
-A drop-in replacement for `requests` that spoofs real browser TLS fingerprints (JA3), handles session persistence, and includes powerful scraping tools.
+Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a simple, requests-like API.
 
 ## 🚀 Features
 
