@@ -1,6 +1,7 @@
 # TLS-Chameleon
 
-![TLS-Chameleon](TLSChameleom.png)
+<img width="2816" height="1536" alt="TLSChameleom" src="https://github.com/user-attachments/assets/b33d3c5d-5a23-4971-8c7a-6f8dbee38313" />
+
 
 Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a simple, requests-like API.
 
