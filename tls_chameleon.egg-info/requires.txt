@@ -1,0 +1,4 @@
+httpx>=0.26.0
+
+[curl]
+curl_cffi>=0.6.0
