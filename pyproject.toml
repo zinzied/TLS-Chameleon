@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Anti-Fingerprinting HTTP client with easy TLS fingerprint spoofing"
 readme = "README.md"
 requires-python = ">=3.8"
-authors = [{ name = "TLS-Chameleon" }]
+authors = [{ name = "Zinzied" }]
 dependencies = [
   "httpx>=0.26.0",
 ]

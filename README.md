@@ -15,6 +15,15 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 - **Humanize 🧠**: Built-in delays to mimic human reading/typing speed.
 - **Resilience**: Auto-rotation of proxies/profiles upon blocking (403/429/Cloudflare).
 
+## 🆚 Why use this vs curl_cffi?
+
+| Feature | Raw curl_cffi | TLS-Chameleon |
+| :--- | :--- | :--- |
+| **TLS Spoofing** | You must manually set `impersonate="chrome110"` | **Auto-Rotation**: It likely has logic to rotate these so you don't get stuck on one. |
+| **Asset Loading** | You just get the HTML. | `mimic_assets=True`: It parses the HTML and fetches CSS/JS/Images to look like a "real" browser visit (very important for some anti-bots). |
+| **Forms** | You must manually parse CSRF tokens and hidden fields. | `client.submit_form()`: It finds the form, keeps the hidden tokens, and submits for you. |
+| **Data Extraction** | You need to use BeautifulSoup manually. | **Magnet Module**: It has built-in extractors for emails, tables, and json_ld. |
+
 ## 📦 Install
 
 ```bash
@@ -101,3 +110,6 @@ Issues and Pull Requests welcome!
 
 ## 📜 License
 MIT
+
+## 🚨 Is this library failing on a specific site?
+Please [open an issue](https://github.com/zinzied/TLS-Chameleon/issues) with the URL! I need test cases to improve the fingerprinting logic.
