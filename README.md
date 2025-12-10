@@ -1,105 +1,103 @@
 # TLS-Chameleon
 
-![TLS-Chameleon](TLSChameleom.png)
+<img width="100%" alt="TLSChameleon" src="https://github.com/user-attachments/assets/b33d3c5d-5a23-4971-8c7a-6f8dbee38313" />
 
-Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a simple, requests-like API.
+**The "Batteries-Included" Anti-Fingerprinting HTTP Client.**
+A drop-in replacement for `requests` that spoofs real browser TLS fingerprints (JA3), handles session persistence, and includes powerful scraping tools.
 
-## Features
+## 🚀 Features
 
-- One-liner TLS fingerprint spoofing via built-in browser profiles
-- Prefers `curl_cffi` for realistic JA3; falls back to `httpx`
-- Optional cipher randomization per request
-- Smart block detection with profile/proxy rotation and backoff
-- Site presets for Cloudflare/Akamai
+- **TLS Fingerprint Spoofing**: Built-in profiles for Chrome, Firefox, Safari (uses `curl_cffi` for realistic signatures).
+- **Persistent Sessions**: Proper cookie handling and connection pooling (just like `requests.Session`).
+- **Magnet Module 🧲**: One-line data extraction (Emails, Tables, Forms, JSON-LD, Links).
+- **Smart Static ⚡**: Automatically fetch page assets (CSS/JS/Images) to mimic real browser traffic.
+- **Auto-Form 📝**: Find and submit forms automatically, handling hidden inputs and CSRF tokens.
+- **Humanize 🧠**: Built-in delays to mimic human reading/typing speed.
+- **Resilience**: Auto-rotation of proxies/profiles upon blocking (403/429/Cloudflare).
 
-## Install
+## 📦 Install
 
 ```bash
-pip install tls-chameleon
-# Optional: install curl_cffi for true browser impersonation
 pip install tls-chameleon[curl]
 ```
 
-Alternatively, from source:
+## ⚡ Quick Start
 
-```bash
-pip install -e .
-```
-
-Requirements:
-
-- Python >= 3.8
-- `httpx` (required)
-- `curl_cffi` (optional, recommended)
-
-## Quick Start
+### 1. Simple Requests (Drop-in)
 
 ```python
 from tls_chameleon import get
+
+# One-line spoofing
 r = get("https://httpbin.org/get", fingerprint="chrome_124")
-print(r.status_code)
-print(r.text[:200])
+print(r.json())
 ```
 
-Session wrapper:
+### 2. Persistent Session (Recommended)
+
+Use `Session` (alias for `TLSChameleon`) to maintain cookies across requests:
 
 ```python
-from tls_chameleon import TLSChameleon
-client = TLSChameleon(
-    fingerprint="chrome_120",
-    site="cloudflare",
-    on_block="both",
-    rotate_profiles=["chrome_124","chrome_120","mobile_safari_17"],
-    randomize_ciphers=True,
-    http2=True,
-)
-r = client.get("https://example.com")
-print(r.status_code)
+from tls_chameleon import Session
+
+with Session(fingerprint="chrome_120") as client:
+    # First request sets cookies
+    client.get("https://github.com/login")
+    
+    # Second request sends them back!
+    r = client.get("https://github.com/settings")
 ```
 
-## Examples
+### 3. Magnet Extraction 🧲
 
-Run the included examples:
+Don't write regex. Let Magnet do it.
 
-```bash
-python examples/run_example.py https://httpbin.org/get --fingerprint chrome_124
-python examples/cloudflare_rotate.py --max-retries 3
+```python
+r = client.get("https://example.com/contact")
+
+emails = r.magnet.emails()        # ['support@example.com']
+tables = r.magnet.tables()        # [['Row1', 'Val1'], ...]
+links  = r.magnet.links()
+forms  = r.magnet.get_forms()     # List of parsed forms
+json_data = r.magnet.json_ld()    # Schema.org data
 ```
 
-## API
+### 4. Smart Features
 
-- `TLSChameleon(fingerprint="chrome_124", site=None, on_block="rotate", rotate_profiles=None, proxies_pool=None, randomize_ciphers=False, max_retries=2, http2=None, header_order=None)`
-- Methods: `get`, `post`, `put`, `delete`, `head`, `patch`, `request`
-- Top-level helpers: `get`, `post`, `put`, `delete`, `head`, `patch`, `request`
+**Mimic Real Browser Traffic** (Fetches static assets in background):
+```python
+client.get("https://example.com", mimic_assets=True)
+```
 
-## Profiles
+**Auto-Submit Forms** (Handles hidden fields automatically):
+```python
+# Finds <form>, fills 'user'/'pass', keeps hidden tokens, POSTs to action.
+client.submit_form("https://site.com/login", {
+    "username": "myuser",
+    "password": "mypassword"
+})
+```
 
-Built-in fingerprints in `tls_chameleon/profiles.py`:
+**Humanize Delays**:
+```python
+client.human_delay(reading_speed="fast") # Sleeps randomly based on speed
+```
 
-- `chrome_120`, `chrome_124`, `firefox_120`, `mobile_safari_17`, `ios_safari_17`
+## 🛠 API Reference
 
-## Notes
+### `Session(fingerprint=..., site=..., ...)`
+- `fingerprint`: "chrome_120", "firefox_120", "mobile_safari_17".
+- `site`: "cloudflare" or "akamai" (presets for retries/headers).
+- `randomize_ciphers`: True/False (shuffles cipher suite order).
+- `proxies`: `http://user:pass@host:port`
 
-- For best results on protected sites, install `curl_cffi` and use Chrome/Safari profiles
-- Respect site terms and laws; this library is for legitimate automation and research
+### Response Object
+The response object wraps `curl_cffi.Response` or `httpx.Response` but adds:
+- `.magnet`: Access extraction tools.
+- `.json_fuzzy()`: Parse broken/JSONP responses.
 
-## Version
+## 🤝 Contributing
+Issues and Pull Requests welcome!
 
-`1.0.0`
-
-## Services and Use Cases
-
-- Developer automation
-  - Realistic browser TLS impersonation for scraping and testing flows
-  - Automatic block detection with profile and proxy rotation
-  - Site presets (Cloudflare/Akamai) for sensible defaults and HTTP/2 hints
-  - Header ordering and cipher randomization to study impact on acceptance
-  - Drop-in `requests`-style API for quick migration
-- Diagnostics
-  - Surface engine, profile, and effective `User-Agent` for reproducibility
-  - Optional logs on retries, profile/proxy rotation, and status transitions
-- Pentesting and research
-  - Evaluate bot mitigation thresholds against varied TLS fingerprints
-  - JA3/TLS parameter fuzzing via profile and cipher adjustments
-  - WAF rule sensitivity exploration with header order and HTTP/2 toggles
-  - Proxy pool behavior analysis and session consistency tests
+## 📜 License
+MIT
