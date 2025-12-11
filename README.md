@@ -146,6 +146,16 @@ The response object wraps `curl_cffi.Response` or `httpx.Response` but adds:
 ## 🤝 Contributing
 Issues and Pull Requests welcome!
 
+## 🌟 Credits
+Special thanks to [curl_cffi](https://github.com/lexiforest/curl_cffi) for the amazing low-level TLS spoofing capabilities that power this library.
+
+## ☕ Support / Donate
+If you found this library useful, buy me a coffee!
+
+<a href="https://www.buymeacoffee.com/zied">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="50" width="210" alt="zied" />
+</a>
+
 ## 📜 License
 MIT
 
