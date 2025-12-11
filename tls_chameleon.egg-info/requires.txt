@@ -1,4 +1,9 @@
 httpx>=0.26.0
 
+[ai]
+google-generativeai
+anthropic
+openai
+
 [curl]
 curl_cffi>=0.6.0
