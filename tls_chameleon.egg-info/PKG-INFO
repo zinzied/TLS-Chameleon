@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: tls-chameleon
-Version: 1.1.0
+Version: 1.1.1
 Summary: Anti-Fingerprinting HTTP client with easy TLS fingerprint spoofing
 Author: Zinzied
 Requires-Python: >=3.8
