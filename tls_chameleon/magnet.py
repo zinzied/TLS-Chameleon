@@ -88,4 +88,91 @@ class Magnet:
                     form_data["inputs"][name] = val
                     
             forms.append(form_data)
-        return forms
+    def ask(self, prompt: str, provider: str = "gemini", api_key: Optional[str] = None, model: Optional[str] = None) -> str:
+        """
+        Uses an AI provider to extract data or answer a question about the page content.
+        
+        Args:
+            prompt: The question or extraction instruction.
+            provider: "gemini", "anthropic", or "openai" (default: "gemini").
+            api_key: API Key for the specific provider. If None, checks env vars.
+            model: Model name. Defaults depend on provider:
+                   - gemini: "gemini-flash-latest"
+                   - anthropic: "claude-3-opus-20240229"
+                   - openai: "gpt-4-turbo"
+            
+        Returns:
+            The text response from the model.
+        """
+        import os
+        
+        # Max chars context safety (approx 25k tokens)
+        max_chars = 100000 
+        clean_content = self.content[:max_chars]
+        full_prompt = f"Context:\n{clean_content}\n\nTask: {prompt}"
+
+        if provider == "gemini":
+            try:
+                import google.generativeai as genai
+            except ImportError:
+                raise ImportError("Run `pip install tls-chameleon[ai]` to use Gemini.")
+            
+            key = api_key or os.environ.get("GEMINI_API_KEY")
+            if not key:
+                raise ValueError("Missing Gemini API Key (pass arg or set GEMINI_API_KEY).")
+                
+            model = model or "gemini-flash-latest"
+            genai.configure(api_key=key)
+            m = genai.GenerativeModel(model)
+            try:
+                return m.generate_content(full_prompt).text
+            except Exception as e:
+                return f"Gemini Error: {e}"
+
+        elif provider == "anthropic":
+            try:
+                import anthropic
+            except ImportError:
+                raise ImportError("Run `pip install tls-chameleon[ai]` (ensure anthropic is installed).")
+                
+            key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+            if not key:
+                raise ValueError("Missing Anthropic API Key (pass arg or set ANTHROPIC_API_KEY).")
+                
+            model = model or "claude-3-haiku-20240307"
+            client = anthropic.Anthropic(api_key=key)
+            try:
+                msg = client.messages.create(
+                    model=model,
+                    max_tokens=4096,
+                    messages=[{"role": "user", "content": full_prompt}]
+                )
+                return msg.content[0].text
+            except Exception as e:
+                return f"Anthropic Error: {e}"
+
+        elif provider == "openai":
+            try:
+                import openai
+            except ImportError:
+                raise ImportError("Run `pip install tls-chameleon[ai]` (ensure openai is installed).")
+            
+            key = api_key or os.environ.get("OPENAI_API_KEY")
+            if not key:
+                raise ValueError("Missing OpenAI API Key (pass arg or set OPENAI_API_KEY).")
+            
+            # Supports Grok (via XAI base_url) or DeepSeek if user configures client differently,
+            # but for now standard OpenAI structure.
+            model = model or "gpt-4-turbo-preview"
+            client = openai.OpenAI(api_key=key)
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[{"role": "user", "content": full_prompt}],
+                    model=model,
+                )
+                return chat_completion.choices[0].message.content
+            except Exception as e:
+                return f"OpenAI Error: {e}"
+        
+        else:
+            raise ValueError(f"Unknown provider '{provider}'. Supported: gemini, anthropic, openai.")

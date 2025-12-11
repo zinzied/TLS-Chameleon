@@ -6,6 +6,8 @@ import time
 from typing import Any, Dict, Optional, List, Callable, Union
 import threading
 from urllib.parse import urljoin
+import http.cookiejar
+import os
 
 from .profiles import PROFILES, DEFAULT_PROFILE
 from .magnet import Magnet
@@ -396,6 +398,117 @@ class TLSChameleon:
             # but generally browsers use it.
             if self.http2 is None:
                 self.http2 = True
+
+    def save_cookies(self, filename: str, format: str = "netscape") -> None:
+        """
+        Saves the current session cookies to a file.
+        
+        Args:
+            filename: Path to the cookie file.
+            format: "netscape" (default) or "json".
+        """
+        if not self.session:
+            return
+
+        if format == "netscape":
+            cj = http.cookiejar.MozillaCookieJar(filename)
+            
+            # Identify the iterator that yields actual Cookie objects
+            # httpx.Cookies iterates keys (strings), but has .jar (CookieJar)
+            # requests/curl_cffi RequestCookieJar iterates cookies
+            if hasattr(self.session.cookies, "jar"):
+                cookie_iterator = self.session.cookies.jar
+            else:
+                cookie_iterator = self.session.cookies
+
+            for cookie in cookie_iterator:
+                # Check if it's already a http.cookiejar.Cookie (requests/curl_cffi usually)
+                if isinstance(cookie, http.cookiejar.Cookie):
+                    cj.set_cookie(cookie)
+                else:
+                    # Convert generic object (like httpx.Cookie) to http.cookiejar.Cookie
+                    c = http.cookiejar.Cookie(
+                        version=0, 
+                        name=getattr(cookie, "name", ""), 
+                        value=getattr(cookie, "value", ""),
+                        port=None, 
+                        port_specified=False,
+                        domain=getattr(cookie, "domain", ""), 
+                        domain_specified=bool(getattr(cookie, "domain", "")), 
+                        domain_initial_dot=False,
+                        path=getattr(cookie, "path", "/"), 
+                        path_specified=bool(getattr(cookie, "path", "/")),
+                        secure=getattr(cookie, "secure", False),
+                        expires=getattr(cookie, "expires", None),
+                        discard=False,
+                        comment=None,
+                        comment_url=None,
+                        rest={"HttpOnly": getattr(cookie, "http_only", False)},
+                        rfc2109=False,
+                    )
+                    cj.set_cookie(c)
+                    
+            cj.save(ignore_discard=True, ignore_expires=True)
+            
+        elif format == "json":
+            cookies_list = []
+            
+            if hasattr(self.session.cookies, "jar"):
+                cookie_iterator = self.session.cookies.jar
+            else:
+                cookie_iterator = self.session.cookies
+
+            for cookie in cookie_iterator:
+                cookies_list.append({
+                    "name": getattr(cookie, "name", ""),
+                    "value": getattr(cookie, "value", ""),
+                    "domain": getattr(cookie, "domain", ""),
+                    "path": getattr(cookie, "path", "/"),
+                    "secure": getattr(cookie, "secure", False),
+                    "expires": getattr(cookie, "expires", None)
+                })
+            with open(filename, "w") as f:
+                json.dump(cookies_list, f, indent=2)
+        else:
+            raise ValueError(f"Unknown cookie format: {format}")
+
+    def load_cookies(self, filename: str, format: str = "netscape") -> None:
+        """
+        Loads cookies from a file into the session.
+        
+        Args:
+            filename: Path to the cookie file.
+            format: "netscape" (default) or "json".
+        """
+        if not os.path.exists(filename):
+            return
+            
+        if not self.session:
+            self._init_session()
+
+        if format == "netscape":
+            cj = http.cookiejar.MozillaCookieJar(filename)
+            cj.load(ignore_discard=True, ignore_expires=True)
+            for cookie in cj:
+                self.session.cookies.set(
+                    cookie.name, 
+                    cookie.value, 
+                    domain=cookie.domain, 
+                    path=cookie.path
+                )
+                
+        elif format == "json":
+            with open(filename, "r") as f:
+                cookies_list = json.load(f)
+                for c in cookies_list:
+                    self.session.cookies.set(
+                        c["name"],
+                        c["value"],
+                        domain=c.get("domain"),
+                        path=c.get("path", "/")
+                    )
+        else:
+            raise ValueError(f"Unknown cookie format: {format}")
 
     def submit_form(self, url: str, data: Dict[str, str], form_selector: int = 0, **kwargs):
         """

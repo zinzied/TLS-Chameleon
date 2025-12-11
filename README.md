@@ -63,6 +63,29 @@ with Session(fingerprint="chrome_120") as client:
 
 ### 3. Magnet Extraction 🧲
 
+#### AI Extraction (New! ✨)
+Use **Gemini**, **Claude**, or **OpenAI (ChatGPT/Grok)** to extract data intelligently without regex.
+
+```bash
+# Install AI support
+pip install tls-chameleon[ai]
+```
+
+```python
+r = client.get("https://news.ycombinator.com")
+
+# 1. Google Gemini (Default)
+print(r.magnet.ask("Summary", provider="gemini"))
+
+# 2. Anthropic Claude
+print(r.magnet.ask("Summary", provider="anthropic", model="claude-3-opus-20240229"))
+
+# 3. OpenAI / Grok
+# (Set OPENAI_API_KEY or pass api_key=...)
+print(r.magnet.ask("Summary", provider="openai", model="gpt-4o"))
+```
+
+#### Standard Extractors
 Don't write regex. Let Magnet do it.
 
 ```python
@@ -73,6 +96,17 @@ tables = r.magnet.tables()        # [['Row1', 'Val1'], ...]
 links  = r.magnet.links()
 forms  = r.magnet.get_forms()     # List of parsed forms
 json_data = r.magnet.json_ld()    # Schema.org data
+```
+
+### 4. Cookie Persistence 🍪
+Save your session to a Netscape-formatted file (compatible with wget/curl) to use later.
+
+```python
+# Save
+client.save_cookies("cookies.txt")
+
+# Load later
+client.load_cookies("cookies.txt")
 ```
 
 ### 4. Smart Features

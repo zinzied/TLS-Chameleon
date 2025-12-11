@@ -17,6 +17,11 @@ dependencies = [
 curl = [
   "curl_cffi>=0.6.0",
 ]
+ai = [
+  "google-generativeai",
+  "anthropic",
+  "openai"
+]
 
 [tool.setuptools.packages.find]
 include = ["tls_chameleon*"]
