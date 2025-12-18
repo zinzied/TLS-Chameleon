@@ -7,6 +7,13 @@
 
 Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a simple, requests-like API.
 
+## 🎯 Ideal For
+
+- **Professional Scraping**: Bypass Cloudflare, Akamai, and DataDome on E-commerce/Finance sites.
+- **Stealth Automation**: Mimic human behavior to avoid ML-based traffic analysis.
+- **Cybersecurity / OSINT**: Extract hidden JWTs, API keys, and metadata from protected portals.
+- **Price Intelligence**: Track competitors without being flagged or served "bot-only" prices.
+
 ## 🚀 Features
 
 - **TLS Fingerprint Spoofing**: Built-in profiles for Chrome, Firefox, Safari (uses `curl_cffi` for realistic signatures).
