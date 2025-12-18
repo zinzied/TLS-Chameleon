@@ -10,6 +10,8 @@ PROFILES = {
             "ECDHE-ECDSA-CHACHA20-POLY1305",
             "ECDHE-RSA-CHACHA20-POLY1305",
         ],
+        "header_case": "lower",
+        "header_order": ["host", "user-agent", "accept", "accept-language", "accept-encoding", "connection", "upgrade-insecure-requests"],
     },
     "chrome_124": {
         "impersonate": "chrome124",
@@ -22,6 +24,8 @@ PROFILES = {
             "ECDHE-ECDSA-CHACHA20-POLY1305",
             "ECDHE-RSA-CHACHA20-POLY1305",
         ],
+        "header_case": "lower",
+        "header_order": ["host", "user-agent", "accept", "accept-language", "accept-encoding", "connection", "priority"],
     },
     "firefox_120": {
         "impersonate": "firefox120",
@@ -34,6 +38,8 @@ PROFILES = {
             "ECDHE-ECDSA-CHACHA20-POLY1305",
             "ECDHE-RSA-CHACHA20-POLY1305",
         ],
+        "header_case": "title",
+        "header_order": ["Host", "User-Agent", "Accept", "Accept-Language", "Accept-Encoding", "Connection", "Upgrade-Insecure-Requests"],
     },
     "mobile_safari_17": {
         "impersonate": "safari17_0",
@@ -46,6 +52,8 @@ PROFILES = {
             "ECDHE-ECDSA-CHACHA20-POLY1305",
             "ECDHE-RSA-CHACHA20-POLY1305",
         ],
+        "header_case": "title",
+        "header_order": ["Host", "Accept", "Accept-Language", "User-Agent", "Accept-Encoding", "Connection"],
     },
     "ios_safari_17": {
         "impersonate": "ios17_0",
@@ -58,6 +66,8 @@ PROFILES = {
             "ECDHE-ECDSA-CHACHA20-POLY1305",
             "ECDHE-RSA-CHACHA20-POLY1305",
         ],
+        "header_case": "title",
+        "header_order": ["Host", "Accept", "Accept-Language", "User-Agent", "Accept-Encoding", "Connection"],
     },
 }
 

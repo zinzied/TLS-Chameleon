@@ -106,6 +106,7 @@ class TLSChameleon:
         header_order: Optional[List[str]] = None,
         http2: Optional[bool] = None,
         verify: bool = True,
+        ghost_mode: bool = False,
     ) -> None:
         self.profile_name = fingerprint if fingerprint in PROFILES else DEFAULT_PROFILE
         self.engine = _select_engine(engine)
@@ -121,6 +122,7 @@ class TLSChameleon:
         self.header_order = header_order
         self.http2 = http2
         self.verify = verify
+        self.ghost_mode = ghost_mode
         
         # Internal state
         self._rotate_index = -1
@@ -236,15 +238,14 @@ class TLSChameleon:
         
         # Merge headers
         req_headers = request_kwargs.pop("headers", {}) or {}
-        # We don't want to permanently mutate session headers for a single request usually, 
-        # but requests.Session logic merges them.
-        # We will let the underlying session handle the merge of passed headers + session headers.
+        
+        # 1. Header Morphing (Ordering & Casing)
+        profile = _get_profile(self.profile_name)
+        req_headers = self._morph_headers(req_headers, profile)
 
-        # Header Ordering (for Curl)
-        if self.header_order:
-            # We can't easily force order in requests/httpx generic calls without lower level access
-            # But for curl_cffi, we might be able to pass ordered dict if the lib respects it.
-            pass
+        # 2. Ghost Mode (Traffic Shaping)
+        if self.ghost_mode:
+            self._apply_ghost_mode(method, url, request_kwargs)
 
         attempt = 0
         while True:
@@ -271,6 +272,9 @@ class TLSChameleon:
                 # Wrap response
                 wrapped_resp = ChameleonResponse(resp)
                 
+                # WAF Detection & Adaptation
+                self._check_waf_and_adapt(wrapped_resp)
+
                 # Trigger mimic_assets if success
                 if mimic_assets and resp and 200 <= getattr(resp, "status_code", 500) < 300:
                     self._mimic_assets(getattr(resp, "text", ""), url)
@@ -388,16 +392,120 @@ class TLSChameleon:
                 self.http2 = True
             if not self.header_order:
                 self.header_order = ["User-Agent", "Accept", "Accept-Language", "Accept-Encoding", "Connection"]
-        elif s == "akamai":
-            if not self.rotate_profiles:
-                self.rotate_profiles = ["chrome_124", "firefox_120", "mobile_safari_17"]
-            self.max_retries = max(self.max_retries, 3)
-            self.retry_backoff_base = min(self.retry_backoff_base, 1.0)
-            self.retry_jitter = max(self.retry_jitter, 0.5)
-            # Akamai often dislikes HTTP/2 on some endpoints or fingerprints it aggressively
-            # but generally browsers use it.
-            if self.http2 is None:
+
+    def _morph_headers(self, headers: Dict[str, str], profile: Dict[str, Any]) -> Dict[str, str]:
+        """Applies casing and ordering to headers based on profile settings."""
+        if not profile:
+            return headers
+        
+        # Merge session headers with request headers
+        merged = self.headers.copy()
+        merged.update(headers)
+        
+        case_mode = profile.get("header_case", "title")
+        order_rule = self.header_order or profile.get("header_order")
+        
+        morphed = {}
+        
+        def case_key(k: str) -> str:
+            if case_mode == "lower":
+                return k.lower()
+            if case_mode == "title":
+                return "-".join(word.capitalize() for word in k.split("-"))
+            return k
+
+        # Apply order if specified
+        if order_rule:
+            # Normalize order rule to lowercase for matching
+            norm_order = [o.lower() for o in order_rule]
+            # Add known ordered headers first
+            for key in norm_order:
+                # Find matching key in merged (case insensitive)
+                found_key = next((k for k in merged if k.lower() == key), None)
+                if found_key:
+                    morphed[case_key(found_key)] = merged.pop(found_key)
+        
+        # Add remaining headers
+        for k, v in merged.items():
+            morphed[case_key(k)] = v
+            
+        return morphed
+
+    def _apply_ghost_mode(self, method: str, url: str, kwargs: Any) -> None:
+        """Simulates human behavior and masks traffic patterns."""
+        # 1. Timing Jitter (Poisson distribution representation)
+        # Random delay between 0.1 and 1.5 seconds for every request if ghost_mode is on
+        delay = random.expovariate(1.0 / 0.5) # Average 0.5s delay
+        delay = min(max(delay, 0.1), 3.0) # Clamp
+        time.sleep(delay)
+        
+        # 2. Payload Padding for POST/PUT
+        if method.upper() in ("POST", "PUT"):
+            data = kwargs.get("data")
+            json_data = kwargs.get("json")
+            
+            padding_key = f"_{random.getrandbits(16):x}"
+            padding_val = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=random.randint(8, 32)))
+            
+            if isinstance(data, dict):
+                data[padding_key] = padding_val
+            elif isinstance(json_data, dict):
+                json_data[padding_key] = padding_val
+
+    def _check_waf_and_adapt(self, resp: Any) -> None:
+        """Detects WAF and automatically adapts session settings."""
+        headers = {k.lower(): v for k, v in getattr(resp, "headers", {}).items()}
+        server = headers.get("server", "").lower()
+        
+        waf_detected = None
+        if "cloudflare" in server or "cf-ray" in headers:
+            waf_detected = "cloudflare"
+        elif "akamai" in server or "x-akamai-transformed" in headers:
+            waf_detected = "akamai"
+        elif "datadome" in headers:
+            waf_detected = "datadome"
+        elif "x-amz-cf-id" in headers:
+            waf_detected = "cloudfront"
+            
+        if waf_detected:
+            # Adapt logic
+            if waf_detected == "cloudflare":
+                # Ensure HTTP/2 and modern chrome
                 self.http2 = True
+                if "chrome" not in self.profile_name:
+                    self._rotate_to_modern_chrome()
+            
+            # We could log this if we had a logger
+            pass
+
+    def _rotate_to_modern_chrome(self) -> None:
+        chromes = [n for n in PROFILES.keys() if "chrome" in n]
+        if chromes:
+            self.profile_name = random.choice(chromes)
+            self._init_session()
+
+    def export_session(self) -> Dict[str, Any]:
+        """Returns the full state of the session for persistence."""
+        return {
+            "profile_name": self.profile_name,
+            "engine": self.engine,
+            "proxies": self.proxies,
+            "headers": self.headers,
+            "rotate_index": self._rotate_index,
+            "proxy_index": self._proxy_index,
+            # We don't export cookies here as load/save_cookies handle files, 
+            # but we could return them as a list.
+        }
+
+    def import_session(self, state: Dict[str, Any]) -> None:
+        """Restores session state."""
+        self.profile_name = state.get("profile_name", self.profile_name)
+        self.engine = state.get("engine", self.engine)
+        self.proxies = state.get("proxies", self.proxies)
+        self.headers = state.get("headers", self.headers)
+        self._rotate_index = state.get("rotate_index", -1)
+        self._proxy_index = state.get("proxy_index", -1)
+        self._init_session()
 
     def save_cookies(self, filename: str, format: str = "netscape") -> None:
         """

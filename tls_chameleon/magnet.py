@@ -26,6 +26,62 @@ class Magnet:
                 pass
         return results
 
+    def deep_extract(self) -> Dict[str, List[str]]:
+        """
+        Deeply extracts potentially hidden data:
+        - JWT Tokens
+        - API Keys (patterns)
+        - Hidden Input Fields
+        - Config objects in Scripts
+        """
+        data = {
+            "jwts": [],
+            "api_keys": [],
+            "hidden_inputs": [],
+            "found_js_configs": []
+        }
+        
+        # 1. JWT Tokens (Simple heuristic)
+        # Search everywhere, including inside strings in scripts
+        data["jwts"] = list(set(re.findall(r'ey[a-zA-Z0-9_-]{10,}\.ey[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}', self.content)))
+        
+        # 2. API Keys (Common formats)
+        patterns = [
+            r'(?:key|api|token|secret|auth|cid|sid)["\']?\s*[:=]\s*["\']([a-zA-Z0-9\-_]{20,})["\']', # Generic in JSON/Key-Value
+            r'AIza[0-9A-Za-z\\-_]{35}', # Google API Key
+            r'(?:["\'])(AIza[0-9A-Za-z\\-_]{35})(?:["\'])', # Google Key in quotes
+        ]
+        for p in patterns:
+            matches = re.findall(p, self.content)
+            for m in matches:
+                # findall with groups returns the group, without groups returns the match
+                data["api_keys"].append(m if isinstance(m, str) else m[0])
+        data["api_keys"] = list(set(data["api_keys"]))
+        
+        # 3. Hidden Inputs
+        # <input type="hidden" name="..." value="...">
+        hidden_matches = re.finditer(r'<input[^>]*type=["\']hidden["\'][^>]*>', self.content, re.IGNORECASE)
+        for hm in hidden_matches:
+            tag = hm.group(0)
+            name_m = re.search(r'name=["\'](.*?)["\']', tag, re.IGNORECASE)
+            val_m = re.search(r'value=["\'](.*?)["\']', tag, re.IGNORECASE)
+            if name_m:
+                 data["hidden_inputs"].append({name_m.group(1): val_m.group(1) if val_m else ""})
+                 
+        # 4. Config objects in scripts (var config = { ... })
+        configs = re.findall(r'(?:var|const|let)\s+(?:\w+Config|config|appData|initialState)\s*=\s*({.*?});', self.content, re.DOTALL)
+        for c in configs:
+            # Try to sanitize and parse
+            try:
+                # This is risky and might fail if not pure JSON, but worth a shot for deep extraction
+                cleaned = re.sub(r'//.*?\n', '', c) # simple comment strip
+                # In real world we might use a JS parser, here we just keep the string if parse fails
+                data["found_js_configs"].append(cleaned.strip())
+            except:
+                pass
+                
+        return data
+
     def tables(self) -> List[List[List[str]]]:
         """
         Extracts HTML tables as nested lists.

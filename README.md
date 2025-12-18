@@ -16,6 +16,10 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 - **Auto-Form 📝**: Find and submit forms automatically, handling hidden inputs and CSRF tokens.
 - **Humanize 🧠**: Built-in delays to mimic human reading/typing speed.
 - **Resilience**: Auto-rotation of proxies/profiles upon blocking (403/429/Cloudflare).
+- **Ghost Mode (Pro) 👻**: Stealth traffic shaping with randomized timing and payload padding.
+- **WAF Shield (Pro) 🛡️**: Automatic detection and adaptation for Cloudflare, Akamai, and DataDome.
+- **Header Morphing (Pro) 🧬**: Dynamic casing and ordering to match specific browser signatures perfectly.
+- **Deep Extract (Pro) 🕵️**: Find hidden JWTs, API keys, and JS configs in any page.
 
 ## 🆚 Why use this vs curl_cffi?
 
@@ -130,6 +134,24 @@ client.submit_form("https://site.com/login", {
 **Humanize Delays**:
 ```python
 client.human_delay(reading_speed="fast") # Sleeps randomly based on speed
+```
+
+**Professional (Stealth) Features**:
+```python
+# Enable Ghost Mode for advanced traffic shaping
+client = Session(fingerprint="chrome_124", ghost_mode=True)
+
+# Export/Import full session state (persistence)
+state = client.export_session()
+client.import_session(state)
+```
+
+**Magnet Deep Extract**:
+```python
+r = client.get("https://site.com")
+data = r.magnet.deep_extract()
+print(data["jwts"]) # Finds hidden JWTs in scripts
+print(data["api_keys"]) # Finds Google/API keys
 ```
 
 ## 🛠 API Reference
