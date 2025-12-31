@@ -5,10 +5,19 @@ import ssl
 import time
 from typing import Any, Dict, Optional, List, Callable, Union
 import threading
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import http.cookiejar
 import os
 import copy
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global Domain Memory (Simple In-Memory Cache)
+# Maps domain -> successful_profile_name
+_DOMAIN_MEMORY: Dict[str, str] = {}
 
 from .profiles import PROFILES, DEFAULT_PROFILE, get_profile as profiles_get_profile
 from .magnet import Magnet
@@ -150,15 +159,19 @@ class TLSChameleon:
         ghost_mode: bool = False,
     ) -> None:
         # New v2.0: Handle profile parameter (takes precedence over fingerprint)
+        self._explicit_profile = False
         if profile:
             self.profile_name = profile
+            self._explicit_profile = True
         elif fingerprint:
             self.profile_name = fingerprint
+            self._explicit_profile = True
         else:
             self.profile_name = DEFAULT_PROFILE
         
         # Validate profile exists (check both legacy and gallery)
         if not self._profile_exists(self.profile_name):
+            logger.warning(f"Profile '{self.profile_name}' not found. Falling back to default.")
             self.profile_name = DEFAULT_PROFILE
         
         # New v2.0: Store randomization and HTTP/2 priority settings
@@ -228,16 +241,16 @@ class TLSChameleon:
         
         user_agent = profile.get("user_agent")
         
-        # Merge User-Agent into headers if not already present
-        if user_agent and "User-Agent" not in self.headers:
+        # Always update User-Agent to match the current profile (AI-Urllib4 Adaptive Fix)
+        if user_agent:
              self.headers["User-Agent"] = user_agent
         
-        # Add Sec-CH-UA headers if present in profile (v2.0 feature)
-        if "sec_ch_ua" in profile and "Sec-CH-UA" not in self.headers:
+        # Add/Update Sec-CH-UA headers if present in profile
+        if "sec_ch_ua" in profile:
             self.headers["Sec-CH-UA"] = profile["sec_ch_ua"]
-        if "sec_ch_ua_platform" in profile and "Sec-CH-UA-Platform" not in self.headers:
+        if "sec_ch_ua_platform" in profile:
             self.headers["Sec-CH-UA-Platform"] = profile["sec_ch_ua_platform"]
-        if profile.get("sec_ch_ua_mobile") and "Sec-CH-UA-Mobile" not in self.headers:
+        if profile.get("sec_ch_ua_mobile"):
             self.headers["Sec-CH-UA-Mobile"] = profile.get("sec_ch_ua_mobile", "?0")
 
         if self.engine == "curl" and crequests is not None:
@@ -369,6 +382,15 @@ class TLSChameleon:
         self._init_session()
 
     def request(self, method: str, url: str, **kwargs: Any):
+        # Domain Memory Check (Adaptive Profile Selection)
+        domain = urlparse(url).netloc
+        if not self._explicit_profile and domain in _DOMAIN_MEMORY:
+            memory_profile = _DOMAIN_MEMORY[domain]
+            if memory_profile != self.profile_name and self._profile_exists(memory_profile):
+                logger.info(f"Domain Memory: Switching to known good profile '{memory_profile}' for {domain}")
+                self.profile_name = memory_profile
+                self._init_session()
+
         # Handle custom logic that needs to happen per-request
         # 1. Randomize Ciphers (if curl) -> Handled in _init_session
         # 2. Header Ordering
@@ -431,8 +453,20 @@ class TLSChameleon:
 
             blocked = self._is_block(resp) if resp else True
             
-            if not blocked or self.on_block == "none" or attempt >= self.max_retries:
+            if not blocked:
+                # Success! Learn this profile works for this domain
+                if domain not in _DOMAIN_MEMORY or _DOMAIN_MEMORY[domain] != self.profile_name:
+                    logger.info(f"Domain Memory: Learning profile '{self.profile_name}' works for {domain}")
+                    _DOMAIN_MEMORY[domain] = self.profile_name
+                
+                if self.on_block == "none" or attempt >= self.max_retries:
+                    return resp
                 return resp
+            
+            if attempt >= self.max_retries:
+                 return resp
+
+            # Blocking Logic
             
             # Blocking Logic
             attempt += 1

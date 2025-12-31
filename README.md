@@ -8,11 +8,14 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 
 ## 🆕 What's New in v2.0
 
-- **45 Browser Profiles**: Chrome, Firefox, Safari, Edge across Windows 10, Windows 11, macOS, Linux, iOS, Android
-- **Fingerprint Randomization**: Slight variations to avoid pattern detection
-- **HTTP/2 Priority Simulation**: Browser-specific HTTP/2 SETTINGS
-- **Auto-Update System**: Fetch latest JA3 fingerprints from online sources
-- **Enhanced API**: New `TLSSession` class with `profile`, `randomize`, `http2_priority` parameters
+- **AI-Urllib4 Adaptive Features**:
+    - **Domain Memory**: "Learns" which profile works for a specific domain and remembers it.
+    - **Adaptive Headers**: Dynamically adjusts header casing and order (e.g., Title-Case for Firefox, lowercase for Chrome) to match the selected profile perfectly.
+- **45 Browser Profiles**: Chrome, Firefox, Safari, Edge across Windows 10, Windows 11, macOS, Linux, iOS, Android.
+- **Fingerprint Randomization**: Slight variations to avoid pattern detection.
+- **HTTP/2 Priority Simulation**: Browser-specific HTTP/2 SETTINGS.
+- **Auto-Update System**: Fetch latest JA3 fingerprints from online sources.
+- **Enhanced API**: New `TLSSession` class with `profile`, `randomize`, `http2_priority` parameters.
 
 ## 🎯 Ideal For
 
@@ -254,7 +257,36 @@ session.submit_form(url, {"username": "x", "password": "y"})
 session.human_delay(reading_speed="normal")  # 'fast', 'normal', 'slow'
 ```
 
-## 🧲 Magnet Extraction
+## � AI-Urllib4 Adaptive Features (New!)
+
+TLS-Chameleon now includes "AI-Urllib4" capabilities to intelligently adapt to target sites.
+
+### Domain Memory
+The client automatically "learns" which browser profile works best for a specific domain. If a request succeeds with a specific profile (e.g., `chrome_124_win11`), the client remembers this association. Subsequent requests to the same domain will automatically switch to the known-good profile, regardless of the initial setting.
+
+```python
+from tls_chameleon import TLSSession
+
+# First request: Tries with default profile (e.g., Chrome)
+# If it fails/rotates and eventually succeeds with Firefox, it remembers "example.com -> Firefox"
+with TLSSession() as client:
+    client.get("https://example.com")
+
+# Later...
+# Automatically switches to Firefox for example.com
+with TLSSession() as client:
+    client.get("https://example.com")
+```
+
+### Adaptive Headers
+Headers are no longer static. The client dynamically "morphs" header casing and ordering to match the specific browser profile being used.
+
+- **Chrome/Edge**: Headers are sent in `lowercase` (HTTP/2 standard behavior for Chromium).
+- **Firefox/Safari**: Headers utilize `Title-Case` where appropriate and follow specific ordering (e.g., `Host` first vs. `User-Agent` location).
+
+This prevents detection systems from flagging mismatches between the TLS fingerprint (JA3) and the HTTP header structure.
+
+## �🧲 Magnet Extraction
 
 ### AI Extraction (New! ✨)
 Use **Gemini**, **Claude**, or **OpenAI (ChatGPT/Grok)** to extract data intelligently without regex.
