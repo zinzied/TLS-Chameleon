@@ -4,11 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tls-chameleon"
-version = "1.2.0"
+version = "2.0.0"
 description = "Anti-Fingerprinting HTTP client with easy TLS fingerprint spoofing"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [{ name = "Zinzied" }]
+keywords = ["tls", "fingerprint", "scraping", "cloudflare", "bypass", "anti-bot", "ja3"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
   "httpx>=0.26.0",
 ]
@@ -22,6 +36,16 @@ ai = [
   "anthropic",
   "openai"
 ]
+updater = [
+  "httpx>=0.26.0",
+]
+all = [
+  "curl_cffi>=0.6.0",
+  "google-generativeai",
+  "anthropic",
+  "openai",
+]
 
 [tool.setuptools.packages.find]
 include = ["tls_chameleon*"]
+

@@ -2,8 +2,12 @@ README.md
 pyproject.toml
 tls_chameleon/__init__.py
 tls_chameleon/client.py
+tls_chameleon/fingerprint_gallery.py
+tls_chameleon/fingerprint_updater.py
+tls_chameleon/http2_simulator.py
 tls_chameleon/magnet.py
 tls_chameleon/profiles.py
+tls_chameleon/randomizer.py
 tls_chameleon.egg-info/PKG-INFO
 tls_chameleon.egg-info/SOURCES.txt
 tls_chameleon.egg-info/dependency_links.txt

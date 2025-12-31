@@ -1,8 +1,20 @@
 Metadata-Version: 2.4
 Name: tls-chameleon
-Version: 1.2.0
+Version: 2.0.0
 Summary: Anti-Fingerprinting HTTP client with easy TLS fingerprint spoofing
 Author: Zinzied
+Keywords: tls,fingerprint,scraping,cloudflare,bypass,anti-bot,ja3
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 Requires-Dist: httpx>=0.26.0
@@ -12,6 +24,13 @@ Provides-Extra: ai
 Requires-Dist: google-generativeai; extra == "ai"
 Requires-Dist: anthropic; extra == "ai"
 Requires-Dist: openai; extra == "ai"
+Provides-Extra: updater
+Requires-Dist: httpx>=0.26.0; extra == "updater"
+Provides-Extra: all
+Requires-Dist: curl_cffi>=0.6.0; extra == "all"
+Requires-Dist: google-generativeai; extra == "all"
+Requires-Dist: anthropic; extra == "all"
+Requires-Dist: openai; extra == "all"
 
 # TLS-Chameleon
 
@@ -19,12 +38,27 @@ Requires-Dist: openai; extra == "ai"
 
 [![PyPI version](https://badge.fury.io/py/tls-chameleon.svg)](https://badge.fury.io/py/tls-chameleon)
 
-
 Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a simple, requests-like API.
+
+## 🆕 What's New in v2.0
+
+- **45 Browser Profiles**: Chrome, Firefox, Safari, Edge across Windows 10, Windows 11, macOS, Linux, iOS, Android
+- **Fingerprint Randomization**: Slight variations to avoid pattern detection
+- **HTTP/2 Priority Simulation**: Browser-specific HTTP/2 SETTINGS
+- **Auto-Update System**: Fetch latest JA3 fingerprints from online sources
+- **Enhanced API**: New `TLSSession` class with `profile`, `randomize`, `http2_priority` parameters
+
+## 🎯 Ideal For
+
+- **Professional Scraping**: Bypass Cloudflare, Akamai, and DataDome on E-commerce/Finance sites.
+- **Stealth Automation**: Mimic human behavior to avoid ML-based traffic analysis.
+- **Cybersecurity / OSINT**: Extract hidden JWTs, API keys, and metadata from protected portals.
+- **Price Intelligence**: Track competitors without being flagged or served "bot-only" prices.
 
 ## 🚀 Features
 
-- **TLS Fingerprint Spoofing**: Built-in profiles for Chrome, Firefox, Safari (uses `curl_cffi` for realistic signatures).
+- **TLS Fingerprint Spoofing**: Built-in profiles for Chrome, Firefox, Safari, Edge (uses `curl_cffi` for realistic signatures).
+- **Multi-OS Support**: Profiles for Windows 10, Windows 11, macOS, Linux, iOS, and Android.
 - **Persistent Sessions**: Proper cookie handling and connection pooling (just like `requests.Session`).
 - **Magnet Module 🧲**: One-line data extraction (Emails, Tables, Forms, JSON-LD, Links).
 - **Smart Static ⚡**: Automatically fetch page assets (CSS/JS/Images) to mimic real browser traffic.
@@ -35,15 +69,6 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 - **WAF Shield (Pro) 🛡️**: Automatic detection and adaptation for Cloudflare, Akamai, and DataDome.
 - **Header Morphing (Pro) 🧬**: Dynamic casing and ordering to match specific browser signatures perfectly.
 - **Deep Extract (Pro) 🕵️**: Find hidden JWTs, API keys, and JS configs in any page.
-
-## 🆚 Why use this vs curl_cffi?
-
-| Feature | Raw curl_cffi | TLS-Chameleon |
-| :--- | :--- | :--- |
-| **TLS Spoofing** | You must manually set `impersonate="chrome110"` | **Auto-Rotation**: It likely has logic to rotate these so you don't get stuck on one. |
-| **Asset Loading** | You just get the HTML. | `mimic_assets=True`: It parses the HTML and fetches CSS/JS/Images to look like a "real" browser visit (very important for some anti-bots). |
-| **Forms** | You must manually parse CSRF tokens and hidden fields. | `client.submit_form()`: It finds the form, keeps the hidden tokens, and submits for you. |
-| **Data Extraction** | You need to use BeautifulSoup manually. | **Magnet Module**: It has built-in extractors for emails, tables, and json_ld. |
 
 ## 📦 Install
 
@@ -82,9 +107,190 @@ with Session(fingerprint="chrome_120") as client:
     r = client.get("https://github.com/settings")
 ```
 
-### 3. Magnet Extraction 🧲
+### 3. New v2.0 API with OS-Specific Profiles 🆕
 
-#### AI Extraction (New! ✨)
+```python
+from tls_chameleon import TLSSession
+
+# Select specific browser + OS combination
+session = TLSSession(
+    profile='chrome_124_linux',     # Linux Chrome 124
+    randomize=True,                  # Enable fingerprint randomization
+    http2_priority='chrome'          # Match HTTP/2 behavior
+)
+
+# Make requests
+response = session.get("https://example.com")
+
+# Debug: see what fingerprint is being used
+print(session.get_fingerprint_info())
+# {
+#     'profile_name': 'chrome_124_linux',
+#     'user_agent': 'Mozilla/5.0 (X11; Linux x86_64)...',
+#     'ja3_hash': 'cd08e31494f9531f560d64c695473da9',
+#     'randomized': True,
+#     ...
+# }
+```
+
+## 📚 Available Profiles (v2.0)
+
+### By Browser
+
+| Browser | Versions | OS Support |
+|---------|----------|------------|
+| **Chrome** | 120, 124, 125 | Windows 10, Windows 11, macOS, Linux, Android |
+| **Firefox** | 120, 124 | Windows 10, Windows 11, macOS, Linux |
+| **Safari** | iOS 16, iOS 17, macOS 13, macOS 14 | iOS, macOS |
+| **Edge** | 120, 124 | Windows 10, Windows 11 |
+
+### Profile Naming Convention
+
+```
+{browser}_{version}_{os}
+```
+
+Examples:
+- `chrome_124_win11` - Chrome 124 on Windows 11
+- `chrome_124_linux` - Chrome 124 on Linux
+- `firefox_120_macos` - Firefox 120 on macOS
+- `safari_ios17` - Safari on iOS 17
+- `edge_124_win10` - Edge 124 on Windows 10
+- `chrome_android_124` - Chrome 124 on Android
+
+### Convenience Aliases
+
+```python
+# Latest versions
+'chrome_latest'        # Latest Chrome on Windows 11
+'chrome_latest_linux'  # Latest Chrome on Linux
+'firefox_latest'       # Latest Firefox
+'safari_latest'        # Latest Safari
+'edge_latest'          # Latest Edge
+
+# Mobile
+'mobile_safari'        # Safari iOS 17
+'mobile_chrome'        # Chrome Android 124
+```
+
+### List Available Profiles
+
+```python
+from tls_chameleon import (
+    list_available_profiles,
+    get_profiles_by_browser,
+    get_profiles_by_os
+)
+
+# All 45 profiles
+all_profiles = list_available_profiles()
+print(f"Total: {len(all_profiles)} profiles")
+
+# Filter by browser
+chrome_profiles = get_profiles_by_browser("chrome")
+# ['chrome_120_win11', 'chrome_120_win10', 'chrome_120_linux', ...]
+
+# Filter by OS
+linux_profiles = get_profiles_by_os("linux")
+# ['chrome_120_linux', 'chrome_124_linux', 'firefox_120_linux', ...]
+```
+
+## 🎲 Fingerprint Randomization
+
+Enable slight variations to avoid pattern detection:
+
+```python
+from tls_chameleon import TLSSession
+
+# Each session gets a slightly different fingerprint
+session = TLSSession(
+    profile='chrome_124_win11',
+    randomize=True  # Enable randomization
+)
+
+# Variations include:
+# - Minor User-Agent version changes
+# - TLS extension order shuffles (where browsers allow)
+# - Slight cipher order variations
+```
+
+### Manual Randomization
+
+```python
+from tls_chameleon import FingerprintRandomizer, get_profile
+
+# Get base profile
+profile = get_profile("chrome_124_win11")
+
+# Create randomizer
+randomizer = FingerprintRandomizer(profile)
+
+# Generate unique variants
+variant1 = randomizer.generate_variant()
+variant2 = randomizer.generate_variant()
+# Each variant is slightly different but still looks like Chrome 124
+```
+
+## 🛠 API Reference
+
+### `TLSSession` / `Session` Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `profile` | `str` | `None` | Profile name (e.g., `'chrome_124_linux'`). **New in v2.0** |
+| `fingerprint` | `str` | `'chrome_120'` | Legacy profile name (use `profile` for v2.0 profiles) |
+| `randomize` | `bool` | `False` | Enable fingerprint randomization. **New in v2.0** |
+| `http2_priority` | `str` | `None` | HTTP/2 priority simulation (`'chrome'`, `'firefox'`, `'safari'`). **New in v2.0** |
+| `engine` | `str` | `'curl'` | HTTP engine (`'curl'` or `'httpx'`) |
+| `randomize_ciphers` | `bool` | `False` | Shuffle cipher suite order |
+| `timeout` | `float` | `30.0` | Request timeout in seconds |
+| `headers` | `dict` | `None` | Custom headers to add |
+| `proxies` | `dict/str` | `None` | Proxy configuration |
+| `rotate_profiles` | `list` | `None` | List of profiles to rotate through on blocks |
+| `on_block` | `str` | `'rotate'` | Action on block (`'rotate'`, `'proxy'`, `'both'`, `'none'`) |
+| `max_retries` | `int` | `2` | Max retry attempts |
+| `site` | `str` | `None` | Site preset (`'cloudflare'`, `'akamai'`) |
+| `proxies_pool` | `list` | `None` | Pool of proxies to rotate |
+| `http2` | `bool` | `None` | Force HTTP/2 |
+| `verify` | `bool` | `True` | Verify SSL certificates |
+| `ghost_mode` | `bool` | `False` | Enable stealth traffic shaping |
+
+### Session Methods
+
+```python
+session = TLSSession(profile='chrome_124_win11')
+
+# HTTP Methods
+session.get(url, **kwargs)
+session.post(url, **kwargs)
+session.put(url, **kwargs)
+session.delete(url, **kwargs)
+session.head(url, **kwargs)
+session.patch(url, **kwargs)
+session.options(url, **kwargs)
+
+# v2.0 Methods
+session.get_fingerprint_info()  # Returns dict with profile details
+session.sync_fingerprint(ja3=..., user_agent=...)  # Manually sync fingerprint
+
+# Cookie Management
+session.save_cookies("cookies.txt")
+session.load_cookies("cookies.txt")
+
+# Session State
+session.export_session()  # Returns dict for persistence
+session.import_session(state)  # Restore from dict
+
+# Forms
+session.submit_form(url, {"username": "x", "password": "y"})
+
+# Human Delays
+session.human_delay(reading_speed="normal")  # 'fast', 'normal', 'slow'
+```
+
+## 🧲 Magnet Extraction
+
+### AI Extraction (New! ✨)
 Use **Gemini**, **Claude**, or **OpenAI (ChatGPT/Grok)** to extract data intelligently without regex.
 
 ```bash
@@ -106,7 +312,7 @@ print(r.magnet.ask("Summary", provider="anthropic", model="claude-3-opus-2024022
 print(r.magnet.ask("Summary", provider="openai", model="gpt-4o"))
 ```
 
-#### Standard Extractors
+### Standard Extractors
 Don't write regex. Let Magnet do it.
 
 ```python
@@ -119,7 +325,8 @@ forms  = r.magnet.get_forms()     # List of parsed forms
 json_data = r.magnet.json_ld()    # Schema.org data
 ```
 
-### 4. Cookie Persistence 🍪
+## 🍪 Cookie Persistence
+
 Save your session to a Netscape-formatted file (compatible with wget/curl) to use later.
 
 ```python
@@ -130,57 +337,88 @@ client.save_cookies("cookies.txt")
 client.load_cookies("cookies.txt")
 ```
 
-### 4. Smart Features
+## 🔄 Auto-Update Fingerprints (Optional)
 
-**Mimic Real Browser Traffic** (Fetches static assets in background):
+Fetch the latest fingerprints from online sources:
+
 ```python
-client.get("https://example.com", mimic_assets=True)
+from tls_chameleon import FingerprintUpdater
+
+updater = FingerprintUpdater()
+
+# Check for updates (downloads to ~/.tls_chameleon/cache/)
+updated_count = updater.update_gallery()
+print(f"Updated {updated_count} profiles")
+
+# Get cache info
+print(updater.get_cache_info())
 ```
 
-**Auto-Submit Forms** (Handles hidden fields automatically):
+## 🆚 Why use this vs curl_cffi?
+
+| Feature | Raw curl_cffi | TLS-Chameleon |
+| :--- | :--- | :--- |
+| **TLS Spoofing** | You must manually set `impersonate="chrome110"` | **45 profiles** with OS-specific variants |
+| **Profile Selection** | Manual | `profile='chrome_124_linux'` |
+| **Fingerprint Variation** | None | `randomize=True` avoids pattern detection |
+| **Asset Loading** | You just get the HTML. | `mimic_assets=True`: Fetches CSS/JS/Images |
+| **Forms** | You must manually parse CSRF tokens | `client.submit_form()`: Auto-handles tokens |
+| **Data Extraction** | Use BeautifulSoup manually | **Magnet Module**: emails, tables, json_ld |
+| **Blocking Recovery** | Manual retry | Auto-rotation on 403/429 |
+
+## 🔧 Advanced Usage
+
+### Multi-OS Scraping
+
 ```python
-# Finds <form>, fills 'user'/'pass', keeps hidden tokens, POSTs to action.
-client.submit_form("https://site.com/login", {
-    "username": "myuser",
-    "password": "mypassword"
-})
+from tls_chameleon import TLSSession
+
+# Rotate between different OS fingerprints
+profiles = [
+    'chrome_124_win11',
+    'chrome_124_linux',
+    'chrome_124_macos',
+]
+
+for profile in profiles:
+    session = TLSSession(profile=profile, randomize=True)
+    response = session.get("https://target-site.com")
+    print(f"{profile}: {response.status_code}")
+    session.close()
 ```
 
-**Humanize Delays**:
+### Cloudflare Bypass with Profile Rotation
+
 ```python
-client.human_delay(reading_speed="fast") # Sleeps randomly based on speed
+from tls_chameleon import TLSSession
+
+session = TLSSession(
+    profile='chrome_124_win11',
+    site='cloudflare',  # Preset for Cloudflare sites
+    rotate_profiles=[
+        'chrome_124_win11',
+        'chrome_120_linux',
+        'firefox_124_win11',
+    ],
+    on_block='rotate',
+    max_retries=3
+)
+
+response = session.get("https://cloudflare-protected-site.com")
 ```
 
-**Professional (Stealth) Features**:
+### Ghost Mode for Stealth
+
 ```python
-# Enable Ghost Mode for advanced traffic shaping
-client = Session(fingerprint="chrome_124", ghost_mode=True)
+session = TLSSession(
+    profile='chrome_124_win11',
+    ghost_mode=True,  # Random delays + payload padding
+    randomize=True
+)
 
-# Export/Import full session state (persistence)
-state = client.export_session()
-client.import_session(state)
+# Requests include random timing jitter and data padding
+response = session.get("https://anti-bot-site.com")
 ```
-
-**Magnet Deep Extract**:
-```python
-r = client.get("https://site.com")
-data = r.magnet.deep_extract()
-print(data["jwts"]) # Finds hidden JWTs in scripts
-print(data["api_keys"]) # Finds Google/API keys
-```
-
-## 🛠 API Reference
-
-### `Session(fingerprint=..., site=..., ...)`
-- `fingerprint`: "chrome_120", "firefox_120", "mobile_safari_17".
-- `site`: "cloudflare" or "akamai" (presets for retries/headers).
-- `randomize_ciphers`: True/False (shuffles cipher suite order).
-- `proxies`: `http://user:pass@host:port`
-
-### Response Object
-The response object wraps `curl_cffi.Response` or `httpx.Response` but adds:
-- `.magnet`: Access extraction tools.
-- `.json_fuzzy()`: Parse broken/JSONP responses.
 
 ## 🤝 Contributing
 Issues and Pull Requests welcome!

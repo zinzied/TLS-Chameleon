@@ -5,5 +5,14 @@ google-generativeai
 anthropic
 openai
 
+[all]
+curl_cffi>=0.6.0
+google-generativeai
+anthropic
+openai
+
 [curl]
 curl_cffi>=0.6.0
+
+[updater]
+httpx>=0.26.0

@@ -8,9 +8,29 @@ import threading
 from urllib.parse import urljoin
 import http.cookiejar
 import os
+import copy
 
-from .profiles import PROFILES, DEFAULT_PROFILE
+from .profiles import PROFILES, DEFAULT_PROFILE, get_profile as profiles_get_profile
 from .magnet import Magnet
+
+# Import new v2.0 modules
+try:
+    from .fingerprint_gallery import (
+        FINGERPRINT_GALLERY,
+        get_profile as gallery_get_profile,
+        randomize_profile,
+        get_random_profile,
+    )
+    HAS_GALLERY = True
+except ImportError:
+    FINGERPRINT_GALLERY = {}
+    HAS_GALLERY = False
+
+try:
+    from .http2_simulator import HTTP2Profile, get_http2_profile
+    HAS_HTTP2_SIM = True
+except ImportError:
+    HAS_HTTP2_SIM = False
 
 try:
     from curl_cffi import requests as crequests
@@ -37,10 +57,23 @@ def _select_engine(preferred: Optional[str]) -> str:
     return "httpx"
 
 
-def _get_profile(name: Optional[str]) -> Dict[str, Any]:
+def _get_profile(name: Optional[str], use_gallery: bool = True) -> Dict[str, Any]:
+    """Get a profile by name, checking gallery first if available."""
     if not name:
         name = DEFAULT_PROFILE
-    return PROFILES.get(name, PROFILES[DEFAULT_PROFILE])
+    
+    # Try new gallery first
+    if use_gallery and HAS_GALLERY:
+        profile = gallery_get_profile(name)
+        if profile:
+            # Convert to legacy format if needed
+            if "ciphers" in profile and "tls12_ciphers" not in profile:
+                profile = dict(profile)
+                profile["tls12_ciphers"] = profile["ciphers"]
+            return profile
+    
+    # Fall back to legacy profiles
+    return PROFILES.get(name, PROFILES.get(DEFAULT_PROFILE, {}))
 
 
 def _cipher_list(profile: Dict[str, Any], randomize: bool) -> Optional[str]:
@@ -86,10 +119,18 @@ class TLSChameleon:
     """
     A drop-in replacement for requests.Session that handles TLS fingerprinting
     and rotates profiles/proxies on blocks.
+    
+    v2.0 Features:
+    - New `profile` parameter for selecting from 30+ browser profiles
+    - `randomize` parameter for fingerprint variation
+    - `http2_priority` for browser-specific HTTP/2 simulation
     """
     def __init__(
         self,
         fingerprint: Optional[str] = None,
+        profile: Optional[str] = None,  # New v2.0: explicit profile selection
+        randomize: bool = False,  # New v2.0: enable fingerprint randomization
+        http2_priority: Optional[str] = None,  # New v2.0: 'chrome', 'firefox', 'safari'
         engine: Optional[str] = None,
         randomize_ciphers: bool = False,
         timeout: Optional[float] = 30.0,
@@ -108,7 +149,23 @@ class TLSChameleon:
         verify: bool = True,
         ghost_mode: bool = False,
     ) -> None:
-        self.profile_name = fingerprint if fingerprint in PROFILES else DEFAULT_PROFILE
+        # New v2.0: Handle profile parameter (takes precedence over fingerprint)
+        if profile:
+            self.profile_name = profile
+        elif fingerprint:
+            self.profile_name = fingerprint
+        else:
+            self.profile_name = DEFAULT_PROFILE
+        
+        # Validate profile exists (check both legacy and gallery)
+        if not self._profile_exists(self.profile_name):
+            self.profile_name = DEFAULT_PROFILE
+        
+        # New v2.0: Store randomization and HTTP/2 priority settings
+        self.randomize = randomize
+        self.http2_priority = http2_priority
+        self._current_profile_data = None  # Cached profile data
+        
         self.engine = _select_engine(engine)
         self.randomize_ciphers = randomize_ciphers
         self.timeout = timeout
@@ -156,12 +213,32 @@ class TLSChameleon:
             except Exception:
                 pass
 
+        # Get profile, applying randomization if enabled
         profile = _get_profile(self.profile_name)
+        
+        # Apply randomization if enabled (v2.0 feature)
+        if self.randomize and HAS_GALLERY:
+            try:
+                profile = randomize_profile(profile)
+            except Exception:
+                pass
+        
+        # Cache the profile data for get_fingerprint_info()
+        self._current_profile_data = copy.deepcopy(profile)
+        
         user_agent = profile.get("user_agent")
         
         # Merge User-Agent into headers if not already present
         if user_agent and "User-Agent" not in self.headers:
              self.headers["User-Agent"] = user_agent
+        
+        # Add Sec-CH-UA headers if present in profile (v2.0 feature)
+        if "sec_ch_ua" in profile and "Sec-CH-UA" not in self.headers:
+            self.headers["Sec-CH-UA"] = profile["sec_ch_ua"]
+        if "sec_ch_ua_platform" in profile and "Sec-CH-UA-Platform" not in self.headers:
+            self.headers["Sec-CH-UA-Platform"] = profile["sec_ch_ua_platform"]
+        if profile.get("sec_ch_ua_mobile") and "Sec-CH-UA-Mobile" not in self.headers:
+            self.headers["Sec-CH-UA-Mobile"] = profile.get("sec_ch_ua_mobile", "?0")
 
         if self.engine == "curl" and crequests is not None:
             impersonate = profile.get("impersonate")
@@ -227,6 +304,69 @@ class TLSChameleon:
     def close(self):
         if self.session:
             self.session.close()
+    
+    def _profile_exists(self, name: str) -> bool:
+        """Check if a profile exists in either legacy or gallery profiles."""
+        if name in PROFILES:
+            return True
+        if HAS_GALLERY and name in FINGERPRINT_GALLERY:
+            return True
+        return False
+    
+    def get_fingerprint_info(self) -> Dict[str, Any]:
+        """
+        Return current fingerprint details for debugging.
+        
+        Returns:
+            Dict with user_agent, ja3, ja3_hash, profile_name, etc.
+        """
+        profile = self._current_profile_data or _get_profile(self.profile_name)
+        
+        info = {
+            "profile_name": self.profile_name,
+            "user_agent": profile.get("user_agent"),
+            "ja3": profile.get("ja3"),
+            "ja3_hash": profile.get("ja3_hash"),
+            "impersonate": profile.get("impersonate"),
+            "header_case": profile.get("header_case"),
+            "randomized": self.randomize,
+            "http2_priority": self.http2_priority,
+            "engine": self.engine,
+        }
+        
+        # Add Sec-CH-UA if present
+        if "sec_ch_ua" in profile:
+            info["sec_ch_ua"] = profile["sec_ch_ua"]
+        if "sec_ch_ua_platform" in profile:
+            info["sec_ch_ua_platform"] = profile["sec_ch_ua_platform"]
+        
+        return info
+    
+    def sync_fingerprint(
+        self, 
+        ja3: Optional[str] = None, 
+        user_agent: Optional[str] = None
+    ) -> None:
+        """
+        Manually set fingerprint to match network layer.
+        
+        This is useful for ensuring the TLS fingerprint (JA3) matches
+        the User-Agent being sent.
+        
+        Args:
+            ja3: JA3 fingerprint string to use
+            user_agent: User-Agent string to use
+        """
+        if user_agent:
+            self.headers["User-Agent"] = user_agent
+        
+        # Note: JA3 is determined by curl_cffi's impersonate setting
+        # We can't directly set JA3, but we can store it for reference
+        if ja3 and self._current_profile_data:
+            self._current_profile_data["ja3"] = ja3
+        
+        # Reinitialize session to apply changes
+        self._init_session()
 
     def request(self, method: str, url: str, **kwargs: Any):
         # Handle custom logic that needs to happen per-request
@@ -755,3 +895,20 @@ def options(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
         return client.options(url)
 
 Session = TLSChameleon
+
+# New v2.0 alias - recommended for new code
+TLSSession = TLSChameleon
+
+
+def list_available_profiles() -> List[str]:
+    """
+    List all available fingerprint profiles.
+    
+    Returns:
+        List of profile names that can be used with TLSSession(profile=...)
+    """
+    profiles = list(PROFILES.keys())
+    if HAS_GALLERY:
+        profiles.extend(FINGERPRINT_GALLERY.keys())
+    return sorted(set(profiles))
+
