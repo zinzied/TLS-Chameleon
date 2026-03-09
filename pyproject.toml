@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tls-chameleon"
-version = "2.1.0"
-description = "Anti-Fingerprinting HTTP client with easy TLS fingerprint spoofing"
+version = "2.1.1"
+description = "Anti-Fingerprint HTTP Client Spoofing TLS/HTTP2 profiles"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [{ name = "Zinzied" }]

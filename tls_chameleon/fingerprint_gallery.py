@@ -12,6 +12,7 @@ Each profile includes:
 - User-Agent string
 - JA3 fingerprint (TLS 1.2)
 - JA3N fingerprint (normalized)
+- JA4 fingerprint (TLS 1.2/1.3 + extensions)
 - Cipher suites with exact ordering
 - TLS extensions list
 - Header ordering and casing
@@ -42,7 +43,8 @@ CHROME_BASE = {
         "cipher_shuffle": False,  # Chrome keeps strict cipher order
         "extension_variance": 0,
         "ua_minor_variance": True,  # Can vary minor version
-    }
+    },
+    "ja4": "t13d1516h2_8daaf6152771_bba078b4bd11", # Generic Chrome JA4
 }
 
 # Chrome 120 - Windows 11
@@ -380,7 +382,8 @@ FIREFOX_BASE = {
         "cipher_shuffle": False,
         "extension_variance": 2,  # Firefox has some extension order variance
         "ua_minor_variance": True,
-    }
+    },
+    "ja4": "t13d1716h2_8daaf6152771_bba078b4bd11", # Generic Firefox JA4
 }
 
 # Firefox 120 - All platforms
@@ -478,7 +481,8 @@ SAFARI_BASE = {
         "cipher_shuffle": False,
         "extension_variance": 0,
         "ua_minor_variance": False,
-    }
+    },
+    "ja4": "t13d1416h2_8daaf6152771_bba078b4bd11", # Generic Safari JA4
 }
 
 # Safari iOS 17
@@ -632,16 +636,19 @@ FINGERPRINT_GALLERY: Dict[str, Dict[str, Any]] = {
     "chrome_120_win11": CHROME_120_WIN11,
     "chrome_124_win11": CHROME_124_WIN11,
     "chrome_125_win11": CHROME_125_WIN11,
+    "chrome_130_win11": {**CHROME_125_WIN11, "name": "chrome_130_win11", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", "sec_ch_ua": '"Chromium";v="130", "Google Chrome";v="130", "Not-A.Brand";v="99"', "impersonate": "chrome130", "ja4": "t13d1516h2_8daaf6152771_e8f1e6be5e71"},
     
     # Chrome - Windows 10
     "chrome_120_win10": CHROME_120_WIN10,
     "chrome_124_win10": CHROME_124_WIN10,
     "chrome_125_win10": CHROME_125_WIN10,
+    "chrome_130_win10": {**CHROME_125_WIN10, "name": "chrome_130_win10", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", "sec_ch_ua": '"Chromium";v="130", "Google Chrome";v="130", "Not-A.Brand";v="99"', "impersonate": "chrome130", "ja4": "t13d1516h2_8daaf6152771_e8f1e6be5e71"},
     
     # Chrome - macOS
     "chrome_120_macos": CHROME_120_MACOS,
     "chrome_124_macos": CHROME_124_MACOS,
     "chrome_125_macos": CHROME_125_MACOS,
+    "chrome_130_macos": {**CHROME_125_MACOS, "name": "chrome_130_macos", "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", "sec_ch_ua": '"Chromium";v="130", "Google Chrome";v="130", "Not-A.Brand";v="99"', "impersonate": "chrome130", "ja4": "t13d1516h2_8daaf6152771_e8f1e6be5e71"},
     
     # Chrome - Linux
     "chrome_120_linux": CHROME_120_LINUX,
@@ -686,9 +693,9 @@ FINGERPRINT_GALLERY: Dict[str, Dict[str, Any]] = {
 }
 
 # Aliases for convenience
-FINGERPRINT_GALLERY["chrome_latest"] = CHROME_125_WIN11
-FINGERPRINT_GALLERY["chrome_latest_win10"] = CHROME_125_WIN10
-FINGERPRINT_GALLERY["chrome_latest_macos"] = CHROME_125_MACOS
+FINGERPRINT_GALLERY["chrome_latest"] = FINGERPRINT_GALLERY["chrome_130_win11"]
+FINGERPRINT_GALLERY["chrome_latest_win10"] = FINGERPRINT_GALLERY["chrome_130_win10"]
+FINGERPRINT_GALLERY["chrome_latest_macos"] = FINGERPRINT_GALLERY["chrome_130_macos"]
 FINGERPRINT_GALLERY["chrome_latest_linux"] = CHROME_125_LINUX
 FINGERPRINT_GALLERY["firefox_latest"] = FIREFOX_124_WIN11
 FINGERPRINT_GALLERY["firefox_latest_linux"] = FIREFOX_124_LINUX

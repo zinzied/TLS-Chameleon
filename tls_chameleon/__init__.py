@@ -28,6 +28,8 @@ from .client import (
     list_available_profiles,  # New v2.0
 )
 
+from .async_client import AsyncTLSChameleon, AsyncSession
+
 # New v2.0 modules
 try:
     from .fingerprint_gallery import (
@@ -58,14 +60,18 @@ try:
 except ImportError:
     FingerprintUpdater = None
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 __all__ = [
     # Core classes
     "TLSChameleon",
     "Session",
     "TLSSession",
-    
+
+    # Async core classes
+    "AsyncTLSChameleon",
+    "AsyncSession",
+
     # Request functions
     "request",
     "get",
@@ -75,7 +81,7 @@ __all__ = [
     "head",
     "patch",
     "options",
-    
+
     # Profile utilities
     "list_available_profiles",
     "FINGERPRINT_GALLERY",

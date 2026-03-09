@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Global Domain Memory (Simple In-Memory Cache)
 # Maps domain -> successful_profile_name
 _DOMAIN_MEMORY: Dict[str, str] = {}
+_DOMAIN_MEMORY_LOCK = threading.Lock()
 
 from .profiles import PROFILES, DEFAULT_PROFILE, get_profile as profiles_get_profile
 from .magnet import Magnet
@@ -98,10 +99,13 @@ class ChameleonResponse:
     """Wrapper around Response to add Magnet features."""
     def __init__(self, original_response: Any):
         self._resp = original_response
+        self._magnet = None
 
     @property
     def magnet(self):
-        return Magnet(getattr(self._resp, "text", "") or "")
+        if self._magnet is None:
+            self._magnet = Magnet(getattr(self._resp, "text", "") or "")
+        return self._magnet
         
     def json_fuzzy(self):
         """Attempts to parse JSON from broken/JSONP responses."""
@@ -109,10 +113,9 @@ class ChameleonResponse:
         t = getattr(self._resp, "text", "")
         # Strip padding like callback(...)
         t = re.sub(r'^\w+\((.*)\);?$', r'\1', t.strip())
-        import json # Local import to be safe or assuming top level
         try:
             return json.loads(t) 
-        except:
+        except Exception:
              # Try simple trailing comma fix
              t = re.sub(r',\s*([}\]])', r'\1', t)
              return json.loads(t)
@@ -151,6 +154,8 @@ class TLSChameleon:
         retry_backoff_base: float = 1.0,
         retry_jitter: float = 0.3,
         block_detector: Optional[Callable[[Any], bool]] = None,
+        on_retry: Optional[Callable[[int, Any, str], None]] = None,  # v2.1: retry hook(attempt, resp, next_profile)
+        rate_limit: Optional[float] = None,  # v2.1: max requests/second per domain
         site: Optional[str] = None,
         proxies_pool: Optional[List[str]] = None,
         header_order: Optional[List[str]] = None,
@@ -188,6 +193,9 @@ class TLSChameleon:
         self.retry_backoff_base = retry_backoff_base
         self.retry_jitter = retry_jitter
         self.block_detector = block_detector
+        self.on_retry = on_retry
+        self.rate_limit = rate_limit
+        self._rate_limit_last: Dict[str, float] = {}  # domain -> last request timestamp
         self.proxies_pool = proxies_pool
         self.header_order = header_order
         self.http2 = http2
@@ -233,8 +241,8 @@ class TLSChameleon:
         if self.randomize and HAS_GALLERY:
             try:
                 profile = randomize_profile(profile)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Randomization failed: {e}")
         
         # Cache the profile data for get_fingerprint_info()
         self._current_profile_data = copy.deepcopy(profile)
@@ -278,33 +286,29 @@ class TLSChameleon:
             # Note: curls_cffi Session handles cookies automatically
 
         elif self.engine == "httpx" and httpx is not None:
-            # Setup HTTPX Client
+            # Build SSL context with cipher configuration
+            ssl_context = ssl.create_default_context()
+            if not self.verify:
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
+            cipher_str = _cipher_list(profile, self.randomize_ciphers)
+            if cipher_str:
+                try:
+                    ssl_context.set_ciphers(cipher_str)
+                except Exception as e:
+                    logger.debug(f"Failed to set ciphers for httpx: {e}")
+            
+            # Create client with the configured SSL context
             self.session = httpx.Client(
                 http2=bool(self.http2) if self.http2 is not None else False,
                 timeout=self.timeout,
-                verify=self.verify,
+                verify=ssl_context,
                 follow_redirects=True
             )
             self.session.headers.update(self.headers)
             if self.proxies:
                 self.session.proxies = self._normalize_proxy_for_httpx(self.proxies)
-                
-            # Manually handle cipher suite setting for HTTPX if possible
-            # (Limitation: httpx python level config is limited, usually relies on ssl context)
-            cipher_str = _cipher_list(profile, self.randomize_ciphers)
-            if cipher_str:
-                context = ssl.create_default_context()
-                if not self.verify:
-                    context.check_hostname = False
-                    context.verify_mode = ssl.CERT_NONE
-                try:
-                    context.set_ciphers(cipher_str)
-                    # We have to mount the adapter/transport with this context
-                    # This is complex in httpx.Client after init, effectively we just set it on a new transport
-                    # For simplicty in this 'drop-in' we might accept default or rebuild transport
-                    pass 
-                except Exception:
-                    pass
         else:
             raise RuntimeError(f"Engine {self.engine} not available.")
 
@@ -384,8 +388,9 @@ class TLSChameleon:
     def request(self, method: str, url: str, **kwargs: Any):
         # Domain Memory Check (Adaptive Profile Selection)
         domain = urlparse(url).netloc
-        if not self._explicit_profile and domain in _DOMAIN_MEMORY:
-            memory_profile = _DOMAIN_MEMORY[domain]
+        with _DOMAIN_MEMORY_LOCK:
+            memory_profile = _DOMAIN_MEMORY.get(domain)
+        if not self._explicit_profile and memory_profile:
             if memory_profile != self.profile_name and self._profile_exists(memory_profile):
                 logger.info(f"Domain Memory: Switching to known good profile '{memory_profile}' for {domain}")
                 self.profile_name = memory_profile
@@ -397,6 +402,15 @@ class TLSChameleon:
         
         # Prepare kwargs for the delegated call
         request_kwargs = kwargs.copy()
+        
+        # Rate limiting per domain
+        if self.rate_limit and self.rate_limit > 0:
+            min_interval = 1.0 / self.rate_limit
+            last_time = self._rate_limit_last.get(domain, 0)
+            elapsed = time.time() - last_time
+            if elapsed < min_interval:
+                time.sleep(min_interval - elapsed)
+            self._rate_limit_last[domain] = time.time()
         
         # Merge headers
         req_headers = request_kwargs.pop("headers", {}) or {}
@@ -455,12 +469,10 @@ class TLSChameleon:
             
             if not blocked:
                 # Success! Learn this profile works for this domain
-                if domain not in _DOMAIN_MEMORY or _DOMAIN_MEMORY[domain] != self.profile_name:
-                    logger.info(f"Domain Memory: Learning profile '{self.profile_name}' works for {domain}")
-                    _DOMAIN_MEMORY[domain] = self.profile_name
-                
-                if self.on_block == "none" or attempt >= self.max_retries:
-                    return resp
+                with _DOMAIN_MEMORY_LOCK:
+                    if domain not in _DOMAIN_MEMORY or _DOMAIN_MEMORY[domain] != self.profile_name:
+                        logger.info(f"Domain Memory: Learning profile '{self.profile_name}' works for {domain}")
+                        _DOMAIN_MEMORY[domain] = self.profile_name
                 return resp
             
             if attempt >= self.max_retries:
@@ -489,6 +501,14 @@ class TLSChameleon:
 
             delay = self.retry_backoff_base * (2 ** (attempt - 1))
             jitter = random.uniform(0, self.retry_jitter)
+            
+            # Call on_retry hook if set
+            if self.on_retry:
+                try:
+                    self.on_retry(attempt, resp, self.profile_name)
+                except Exception as e:
+                    logger.debug(f"on_retry hook error: {e}")
+            
             time.sleep(delay + jitter)
 
     def _is_block(self, resp: Any) -> bool:
@@ -505,6 +525,10 @@ class TLSChameleon:
         code = getattr(resp, "status_code", None)
         if code in {403, 429, 1020}:
             return True
+        
+        # Only check body keywords on non-2xx responses to avoid false-positives
+        if code is not None and 200 <= code < 300:
+            return False
             
         text = ""
         try:
@@ -512,9 +536,7 @@ class TLSChameleon:
         except Exception:
             text = ""
         t = text.lower()
-        if any(x in t for x in ["access denied", "error 1020", "attention required", "bot detected", "cloudflare"]):
-            # Simple keyword check - can be prone to false positives if page content talks about these things
-            # but standard for scraper block detection.
+        if any(x in t for x in ["access denied", "error 1020", "attention required", "bot detected"]):
             return True
         return False
 
@@ -523,7 +545,11 @@ class TLSChameleon:
             self._rotate_index = (self._rotate_index + 1) % len(self.rotate_profiles)
             name = self.rotate_profiles[self._rotate_index]
         else:
-            names = [n for n in PROFILES.keys() if n != self.profile_name]
+            # Draw from both legacy and gallery profiles
+            all_profiles = set(PROFILES.keys())
+            if HAS_GALLERY:
+                all_profiles.update(FINGERPRINT_GALLERY.keys())
+            names = [n for n in all_profiles if n != self.profile_name]
             if not names:
                 return
             name = random.choice(names)
@@ -854,11 +880,9 @@ class TLSChameleon:
             try:
                 full_url = urljoin(base_url, u)
                 # Head request to look like prefetch, or GET
-                # We use specific headers to look like asset request?
-                # For now just simple GET/HEAD with current session logic (re-using cookies)
-                # Use a lightweight request
+                # Use a lightweight request to mimic asset prefetch
                 self.session.head(full_url, timeout=5)
-            except:
+            except Exception:
                 pass
 
         # Limit to first N assets to avoid flooding?
@@ -896,37 +920,65 @@ class TLSChameleon:
 # Standard requests behavior is: requests.get() creates a NEW session/request every time.
 # We will match that.
 
+# Session-level kwargs are separated from request-level kwargs
+_SESSION_KWARGS = {
+    'fingerprint', 'profile', 'randomize', 'http2_priority', 'engine',
+    'randomize_ciphers', 'timeout', 'proxies', 'rotate_profiles', 'on_block',
+    'max_retries', 'retry_backoff_base', 'retry_jitter', 'block_detector',
+    'on_retry', 'rate_limit',
+    'site', 'proxies_pool', 'header_order', 'http2', 'verify', 'ghost_mode',
+}
+
+def _split_kwargs(kwargs: Dict[str, Any]):
+    """Split kwargs into session-level and request-level."""
+    session_kw = {}
+    request_kw = {}
+    for k, v in kwargs.items():
+        if k in _SESSION_KWARGS:
+            session_kw[k] = v
+        else:
+            request_kw[k] = v
+    return session_kw, request_kw
+
 def request(method: str, url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.request(method, url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.request(method, url, **request_kw)
 
 def get(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.get(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.get(url, **request_kw)
 
 def post(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.post(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.post(url, **request_kw)
 
 def put(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.put(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.put(url, **request_kw)
 
 def delete(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.delete(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.delete(url, **request_kw)
 
 def head(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.head(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.head(url, **request_kw)
 
 def patch(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.patch(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.patch(url, **request_kw)
 
 def options(url: str, fingerprint: Optional[str] = None, **kwargs: Any):
-    with TLSChameleon(fingerprint=fingerprint, **kwargs) as client:
-        return client.options(url)
+    session_kw, request_kw = _split_kwargs(kwargs)
+    with TLSChameleon(fingerprint=fingerprint, **session_kw) as client:
+        return client.options(url, **request_kw)
 
 Session = TLSChameleon
 

@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: tls-chameleon
-Version: 2.1.0
-Summary: Anti-Fingerprinting HTTP client with easy TLS fingerprint spoofing
+Version: 2.1.1
+Summary: Anti-Fingerprint HTTP Client Spoofing TLS/HTTP2 profiles
 Author: Zinzied
 Keywords: tls,fingerprint,scraping,cloudflare,bypass,anti-bot,ja3
 Classifier: Development Status :: 4 - Beta
@@ -17,6 +17,7 @@ Classifier: Topic :: Internet :: WWW/HTTP
 Classifier: Topic :: Software Development :: Libraries :: Python Modules
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: httpx>=0.26.0
 Provides-Extra: curl
 Requires-Dist: curl_cffi>=0.6.0; extra == "curl"
@@ -31,6 +32,7 @@ Requires-Dist: curl_cffi>=0.6.0; extra == "all"
 Requires-Dist: google-generativeai; extra == "all"
 Requires-Dist: anthropic; extra == "all"
 Requires-Dist: openai; extra == "all"
+Dynamic: license-file
 
 # TLS-Chameleon
 
@@ -73,6 +75,14 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 - **Header Morphing (Pro) 🧬**: Dynamic casing and ordering to match specific browser signatures perfectly.
 - **Deep Extract (Pro) 🕵️**: Find hidden JWTs, API keys, and JS configs in any page.
 
+### What's New in v2.1.0
+*   **AI-Urllib4 Adaptive Features:** Domain Memory (auto-profile learning) and Adaptive Headers (dynamic casing/ordering to match profile).
+*   **Fingerprint Gallery:** Over 45+ meticulously crafted browser profiles (Chrome 120-130, Firefox 120-124, Safari, Edge) across Windows, macOS, Linux, and Mobile.
+*   **HTTP/2 Simulator:** Browser-specific HTTP/2 `SETTINGS`, Window sizes, and Priority frames.
+*   **Ghost Mode:** Stealth traffic shaping with randomized delays and payload padding.
+*   **WAF Adaptation:** Automatically detects and mitigates Cloudflare, Akamai, and DataDome.
+*   **Async Support:** Native `asyncio` support via `tls_chameleon.AsyncSession`.
+
 ## 📦 Install
 
 You can install `TLS-Chameleon` directly from PyPI:
@@ -110,7 +120,7 @@ with Session(fingerprint="chrome_120") as client:
     r = client.get("https://github.com/settings")
 ```
 
-### 3. New v2.0 API with OS-Specific Profiles 🆕
+### 3. New v2.1 API with OS-Specific Profiles 🆕
 
 ```python
 from tls_chameleon import TLSSession
@@ -136,7 +146,7 @@ print(session.get_fingerprint_info())
 # }
 ```
 
-## 📚 Available Profiles (v2.0)
+## 📚 Available Profiles (v2.1)
 
 ### By Browser
 
@@ -257,6 +267,8 @@ variant2 = randomizer.generate_variant()
 | `http2` | `bool` | `None` | Force HTTP/2 |
 | `verify` | `bool` | `True` | Verify SSL certificates |
 | `ghost_mode` | `bool` | `False` | Enable stealth traffic shaping |
+| `rate_limit` | `float` | `None` | Maximum number of requests per second per domain (e.g., `rate_limit=2.0` means up to 2 req/sec). Default is None. |
+| `on_retry` | `callable` | `None` | Callback hook `def on_retry(attempt, response, next_profile):` to log or track rotation events. Default is None. |
 
 ### Session Methods
 
@@ -291,7 +303,7 @@ session.submit_form(url, {"username": "x", "password": "y"})
 session.human_delay(reading_speed="normal")  # 'fast', 'normal', 'slow'
 ```
 
-## � AI-Urllib4 Adaptive Features (New!)
+##  AI-Urllib4 Adaptive Features (New!)
 
 TLS-Chameleon now includes "AI-Urllib4" capabilities to intelligently adapt to target sites.
 
@@ -320,7 +332,7 @@ Headers are no longer static. The client dynamically "morphs" header casing and 
 
 This prevents detection systems from flagging mismatches between the TLS fingerprint (JA3) and the HTTP header structure.
 
-## �🧲 Magnet Extraction
+## 🧲 Magnet Extraction
 
 ### AI Extraction (New! ✨)
 Use **Gemini**, **Claude**, or **OpenAI (ChatGPT/Grok)** to extract data intelligently without regex.
@@ -439,18 +451,80 @@ session = TLSSession(
 response = session.get("https://cloudflare-protected-site.com")
 ```
 
+### Async Example
+
+TLS-Chameleon fully supports `asyncio` using `AsyncSession`:
+
+```python
+import asyncio
+from tls_chameleon import AsyncSession
+
+async def main():
+    async with AsyncSession(profile="chrome_130_win11", engine="curl") as session:
+        resp = await session.get("https://tls.peet.ws/api/all")
+        print(resp.json())
+
+asyncio.run(main())
+```
+
 ### Ghost Mode for Stealth
 
 ```python
-session = TLSSession(
-    profile='chrome_124_win11',
-    ghost_mode=True,  # Random delays + payload padding
-    randomize=True
-)
-
-# Requests include random timing jitter and data padding
-response = session.get("https://anti-bot-site.com")
+session = TLSSession(ghost_mode=True)
+# Automatic random delays (0.5s - 2.0s) between requests
+# Automatic random padding payloads (X-Ghost headers)
+response = session.get("https://example.com")
 ```
+
+### Advanced Recipes
+
+#### 1. Response Caching
+For heavy scraping tasks, caching reduces load and saves bandwidth. You can easily wrap `TLS-Chameleon` with `requests-cache`:
+
+```python
+import requests_cache
+from tls_chameleon import TLSSession
+
+# TLSChameleon subclasses requests.Session, making it compatible
+session = TLSSession(profile="chrome_130_win11")
+cached_session = requests_cache.CachedSession(
+    'scraper_cache',
+    backend='sqlite',
+    expire_after=3600
+)
+cached_session.send = session.send  # Bind the chameleon engine
+```
+
+#### 2. Playwright Fallback Hook
+When curl_cffi cannot solve a complex JavaScript challenge (like Turnstile), you can use the `on_retry` hook to escalate to Playwright:
+
+```python
+from tls_chameleon import get
+from playwright.sync_api import sync_playwright
+
+def escalate_to_browser(attempt, response, profile):
+    if attempt >= 2 and response.status_code in (403, 429):
+        print("Falling back to Playwright...")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto(response.url)
+            # Extracted cookies can be fed back into the session
+
+get("https://protected.cf", on_retry=escalate_to_browser)
+```
+
+#### 3. Connection Pool Sharing
+To share connection pools across multiple profiles (saving memory and sockets), pass a pre-initialized `proxies_pool` or share the underlying `curl_cffi` session:
+
+```python
+# Share same proxy pool and rotate automatically
+pool = ["http://p1", "http://p2", "http://p3"]
+s1 = TLSSession(profile="chrome_120", proxies_pool=pool)
+s2 = TLSSession(profile="firefox_120", proxies_pool=pool)
+```
+
+## 🏗️ Architecture
 
 ## 🤝 Contributing
 Issues and Pull Requests welcome!

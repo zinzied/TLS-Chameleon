@@ -77,7 +77,7 @@ class Magnet:
                 cleaned = re.sub(r'//.*?\n', '', c) # simple comment strip
                 # In real world we might use a JS parser, here we just keep the string if parse fails
                 data["found_js_configs"].append(cleaned.strip())
-            except:
+            except Exception:
                 pass
                 
         return data
@@ -144,6 +144,8 @@ class Magnet:
                     form_data["inputs"][name] = val
                     
             forms.append(form_data)
+        
+        return forms
     def ask(self, prompt: str, provider: str = "gemini", api_key: Optional[str] = None, model: Optional[str] = None) -> str:
         """
         Uses an AI provider to extract data or answer a question about the page content.
