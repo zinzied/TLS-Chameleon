@@ -1,0 +1,234 @@
+{
+  "schema": "tls-chameleon.benchmark/2",
+  "status": "ok",
+  "environment": {
+    "timestamp_utc": "2026-08-23T18:37:57+00:00",
+    "tls_chameleon": "3.0.0",
+    "python": "3.11.15",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "httpx": "0.28.1",
+    "curl_cffi": "0.15.0",
+    "aiohttp": "3.13.3"
+  },
+  "parameters": {
+    "requests_per_client": 25,
+    "warmup_requests": 5,
+    "timeout_seconds": 10.0,
+    "scenarios": [
+      "http1",
+      "tls"
+    ]
+  },
+  "scenarios": {
+    "http1": [
+      {
+        "client": "tls-chameleon(curl)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.093,
+        "rps": 268.7,
+        "latency_ms": {
+          "min": 2.741,
+          "mean": 3.719,
+          "median": 3.622,
+          "p95": 4.936,
+          "max": 6.118
+        },
+        "memory_python_peak_delta_mb": 0.03
+      },
+      {
+        "client": "tls-chameleon(httpx)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.133,
+        "rps": 187.9,
+        "latency_ms": {
+          "min": 3.529,
+          "mean": 5.316,
+          "median": 5.133,
+          "p95": 7.415,
+          "max": 8.913
+        },
+        "memory_python_peak_delta_mb": 0.212
+      },
+      {
+        "client": "curl_cffi(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.0752,
+        "rps": 332.4,
+        "latency_ms": {
+          "min": 1.817,
+          "mean": 3.006,
+          "median": 3.014,
+          "p95": 4.323,
+          "max": 4.423
+        },
+        "memory_python_peak_delta_mb": 0.011
+      },
+      {
+        "client": "httpx(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.1103,
+        "rps": 226.7,
+        "latency_ms": {
+          "min": 3.45,
+          "mean": 4.408,
+          "median": 4.169,
+          "p95": 5.723,
+          "max": 5.781
+        },
+        "memory_python_peak_delta_mb": 0.144
+      },
+      {
+        "client": "tls-chameleon(native)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.0607,
+        "rps": 412.0,
+        "latency_ms": {
+          "min": 1.173,
+          "mean": 2.423,
+          "median": 1.759,
+          "p95": 3.971,
+          "max": 10.139
+        },
+        "memory_python_peak_delta_mb": 0.042
+      },
+      {
+        "client": "primp(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.0609,
+        "rps": 410.3,
+        "latency_ms": {
+          "min": 0.857,
+          "mean": 2.434,
+          "median": 1.13,
+          "p95": 4.172,
+          "max": 28.666
+        },
+        "memory_python_peak_delta_mb": 0.019
+      },
+      {
+        "client": "aiohttp(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.0399,
+        "rps": 626.7,
+        "latency_ms": {
+          "min": 0.589,
+          "mean": 1.008,
+          "median": 0.982,
+          "p95": 1.529,
+          "max": 1.574
+        },
+        "memory_python_peak_delta_mb": null
+      }
+    ],
+    "tls": [
+      {
+        "client": "tls-chameleon(curl)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.1141,
+        "rps": 219.1,
+        "latency_ms": {
+          "min": 3.483,
+          "mean": 4.561,
+          "median": 4.385,
+          "p95": 6.149,
+          "max": 6.445
+        },
+        "memory_python_peak_delta_mb": 0.028,
+        "first_request_ms": 10.168,
+        "median_warm_ms": 1.141,
+        "handshake_overhead_ms_est": 9.028
+      },
+      {
+        "client": "tls-chameleon(httpx)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.1665,
+        "rps": 150.1,
+        "latency_ms": {
+          "min": 5.361,
+          "mean": 6.656,
+          "median": 6.408,
+          "p95": 7.941,
+          "max": 9.598
+        },
+        "memory_python_peak_delta_mb": 0.166,
+        "first_request_ms": 17.952,
+        "median_warm_ms": 2.649,
+        "handshake_overhead_ms_est": 15.303
+      },
+      {
+        "client": "curl_cffi(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.1143,
+        "rps": 218.6,
+        "latency_ms": {
+          "min": 3.51,
+          "mean": 4.57,
+          "median": 4.514,
+          "p95": 5.479,
+          "max": 5.907
+        },
+        "memory_python_peak_delta_mb": 0.011,
+        "first_request_ms": 11.885,
+        "median_warm_ms": 1.314,
+        "handshake_overhead_ms_est": 10.571
+      },
+      {
+        "client": "httpx(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.1549,
+        "rps": 161.4,
+        "latency_ms": {
+          "min": 4.69,
+          "mean": 6.192,
+          "median": 6.136,
+          "p95": 7.931,
+          "max": 8.516
+        },
+        "memory_python_peak_delta_mb": 0.193,
+        "first_request_ms": 15.44,
+        "median_warm_ms": 2.233,
+        "handshake_overhead_ms_est": 13.207
+      },
+      {
+        "client": "tls-chameleon(native)",
+        "status": "skipped",
+        "reason": "ConnectError: error sending request for url (https://127.0.0.1:52245/bench) > client error (Connect) > invalid peer certificate: UnknownIssuer"
+      },
+      {
+        "client": "primp(raw)",
+        "status": "ok",
+        "requests": 25,
+        "wall_seconds": 0.1707,
+        "rps": 146.5,
+        "latency_ms": {
+          "min": 1.355,
+          "mean": 6.82,
+          "median": 8.005,
+          "p95": 10.613,
+          "max": 11.793
+        },
+        "memory_python_peak_delta_mb": 0.02,
+        "first_request_ms": 8.851,
+        "median_warm_ms": 5.265,
+        "handshake_overhead_ms_est": 3.585
+      },
+      {
+        "client": "aiohttp(raw)",
+        "status": "skipped",
+        "reason": "TLS scenario not supported for this client type"
+      }
+    ]
+  }
+}

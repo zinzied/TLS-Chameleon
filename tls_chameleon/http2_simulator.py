@@ -10,7 +10,7 @@ Different browsers send different HTTP/2 SETTINGS frames:
 - Safari: Minimal settings, simple priorities
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 
 
 # HTTP/2 SETTINGS Frame IDs

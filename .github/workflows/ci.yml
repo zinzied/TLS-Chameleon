@@ -24,8 +24,54 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest httpx cryptography
+        # NOTE: curl_cffi intentionally NOT installed here -- CI verifies the
+        # httpx-only degradation path of the pluggable transport layer.
+        pip install pytest pytest-asyncio httpx cryptography
 
     - name: Run unit tests
       run: |
         pytest tests/
+
+  native:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install package with [native] extra
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[native]" pytest pytest-asyncio httpx cryptography
+
+    - name: Run unit tests (native backend available)
+      run: |
+        pytest tests/ -k "not benchmark_slow"
+
+  bare-install:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies (no curl_cffi, no primp)
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio httpx cryptography
+
+    - name: Verify bare-install degradation path
+      run: |
+        python -c "
+        from tls_chameleon import TLSChameleon
+        c = TLSChameleon()
+        assert c.engine == 'httpx', c.engine
+        print('bare install ->', c.engine)
+        "
+        pytest tests/test_transport.py tests/test_redaction.py tests/test_fingerprint_system.py

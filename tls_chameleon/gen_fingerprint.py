@@ -43,9 +43,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
 # -----------------------------------------------------------------------------
 # Primitive value tables (decimal IDs as used by JA3/JA4)

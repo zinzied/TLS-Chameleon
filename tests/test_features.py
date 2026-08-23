@@ -1,4 +1,3 @@
-import pytest
 from tls_chameleon.gen_fingerprint import (
     generate_fingerprint,
     parse_gen_spec,
@@ -6,9 +5,9 @@ from tls_chameleon.gen_fingerprint import (
     is_gen_profile,
 )
 from tls_chameleon.randomizer import FingerprintRandomizer
-from tls_chameleon.profiles import PROFILES, DEFAULT_PROFILE, get_profile
-from tls_chameleon.fingerprint_gallery import FINGERPRINT_GALLERY, get_profile as gallery_get_profile
-from tls_chameleon.client import _DOMAIN_MEMORY, _DOMAIN_MEMORY_MAX, _DOMAIN_MEMORY_LOCK, TLSChameleon
+from tls_chameleon.profiles import PROFILES, get_profile
+from tls_chameleon.fingerprint_gallery import get_profile as gallery_get_profile
+from tls_chameleon.client import _DOMAIN_MEMORY, _DOMAIN_MEMORY_MAX, _DOMAIN_MEMORY_LOCK
 from tls_chameleon.magnet import Magnet
 
 
@@ -46,7 +45,6 @@ def test_randomizer_cipher_shuffle():
 def test_domain_memory_bounded():
     with _DOMAIN_MEMORY_LOCK:
         _DOMAIN_MEMORY.clear()
-        client = TLSChameleon()
         for i in range(_DOMAIN_MEMORY_MAX + 50):
             domain = f"example{i}.com"
             _DOMAIN_MEMORY[domain] = "chrome_120"

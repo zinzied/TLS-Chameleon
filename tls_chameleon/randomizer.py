@@ -17,6 +17,7 @@ Variations include:
 
 import random
 import copy
+import hashlib
 import re
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -29,15 +30,19 @@ class FingerprintRandomizer:
     the original browser would actually produce.
     """
     
-    def __init__(self, profile: Dict[str, Any]):
+    def __init__(self, profile: Dict[str, Any], rng: Optional[random.Random] = None):
         """
         Initialize the randomizer with a base profile.
-        
+
         Args:
             profile: A fingerprint profile dict from fingerprint_gallery
+            rng: Optional ``random.Random`` instance. Supply one seeded via
+                :func:`derive_seed_rng` for deterministic variants; defaults
+                to the global ``random`` module.
         """
         self.base_profile = profile
         self.randomization_config = profile.get("randomization", {})
+        self._rng = rng if rng is not None else random
     
     def generate_variant(self) -> Dict[str, Any]:
         """
@@ -83,9 +88,9 @@ class FingerprintRandomizer:
             patch = int(match.group(4))
             
             # Vary build by -50 to +100
-            new_build = max(0, build + random.randint(-50, 100))
+            new_build = max(0, build + self._rng.randint(-50, 100))
             # Vary patch by -20 to +50
-            new_patch = max(0, patch + random.randint(-20, 50))
+            new_patch = max(0, patch + self._rng.randint(-20, 50))
             
             return f"Chrome/{major}.{minor}.{new_build}.{new_patch}"
         
@@ -100,8 +105,8 @@ class FingerprintRandomizer:
             major = match.group(1)
             minor = int(match.group(2))
             # Only vary minor occasionally
-            if random.random() < 0.3:
-                minor = max(0, minor + random.randint(0, 1))
+            if self._rng.random() < 0.3:
+                minor = max(0, minor + self._rng.randint(0, 1))
             return f"Firefox/{major}.{minor}"
         
         ua = re.sub(
@@ -137,7 +142,7 @@ class FingerprintRandomizer:
         # Perform swap operations
         swaps = min(variance, len(exts) - 1)
         for _ in range(swaps):
-            i = random.randint(0, len(exts) - 2)
+            i = self._rng.randint(0, len(exts) - 2)
             exts[i], exts[i + 1] = exts[i + 1], exts[i]
         
         return exts
@@ -154,18 +159,19 @@ class FingerprintRandomizer:
         res = list(ciphers)
         # Swap adjacent elements within the middle section only
         if len(res) > 3:
-            idx = random.randint(1, len(res) - 2)
+            idx = self._rng.randint(1, len(res) - 2)
             res[idx], res[idx + 1] = res[idx + 1], res[idx]
         return res
     
     @staticmethod
-    def get_random_screen_resolution() -> Tuple[int, int]:
+    def get_random_screen_resolution(rng: Optional[random.Random] = None) -> Tuple[int, int]:
         """
         Get a random but realistic screen resolution.
-        
+
         Returns:
             Tuple of (width, height)
         """
+        rand = rng if rng is not None else random
         common_resolutions = [
             (1920, 1080),  # Full HD - most common
             (1920, 1080),  # Weight it higher
@@ -180,16 +186,17 @@ class FingerprintRandomizer:
             (1280, 720),   # HD
             (1600, 900),   # HD+
         ]
-        return random.choice(common_resolutions)
-    
+        return rand.choice(common_resolutions)
+
     @staticmethod
-    def get_random_timezone() -> Tuple[str, int]:
+    def get_random_timezone(rng: Optional[random.Random] = None) -> Tuple[str, int]:
         """
         Get a random but common timezone.
-        
+
         Returns:
             Tuple of (timezone_name, offset_minutes)
         """
+        rand = rng if rng is not None else random
         common_timezones = [
             ("America/New_York", -300),
             ("America/Chicago", -360),
@@ -202,16 +209,17 @@ class FingerprintRandomizer:
             ("Australia/Sydney", 660),
             ("America/Sao_Paulo", -180),
         ]
-        return random.choice(common_timezones)
-    
+        return rand.choice(common_timezones)
+
     @staticmethod
-    def get_random_language_preference() -> str:
+    def get_random_language_preference(rng: Optional[random.Random] = None) -> str:
         """
         Get a random but common Accept-Language header.
-        
+
         Returns:
             Accept-Language header value
         """
+        rand = rng if rng is not None else random
         common_languages = [
             "en-US,en;q=0.9",
             "en-GB,en;q=0.9",
@@ -224,31 +232,44 @@ class FingerprintRandomizer:
             "zh-CN,zh;q=0.9,en;q=0.8",
             "pt-BR,pt;q=0.9,en;q=0.8",
         ]
-        return random.choice(common_languages)
+        return rand.choice(common_languages)
 
 
-def create_variant_profile(profile_name: str, randomize: bool = True) -> Dict[str, Any]:
+def derive_seed_rng(seed: Any) -> random.Random:
+    """Derive a process-stable ``random.Random`` from an arbitrary seed.
+
+    Uses SHA-256 over ``repr(seed)`` so the same seed produces the same
+    sequence across runs and processes (unlike Python's salted ``hash()``).
+    """
+    digest = hashlib.sha256(repr(seed).encode("utf-8")).hexdigest()
+    return random.Random(int(digest[:16], 16))
+
+
+def create_variant_profile(
+    profile_name: str, randomize: bool = True, rng: Optional[random.Random] = None
+) -> Dict[str, Any]:
     """
     Create a fingerprint profile variant from a gallery profile.
-    
+
     Args:
         profile_name: Name of the profile in FINGERPRINT_GALLERY
         randomize: Whether to apply randomization
-        
+        rng: Optional seeded ``random.Random`` for deterministic variants
+
     Returns:
         Profile dict (randomized if requested)
     """
     from .fingerprint_gallery import FINGERPRINT_GALLERY, get_profile
-    
+
     profile = get_profile(profile_name)
     if not profile:
         # Fall back to chrome_120_win11
         profile = FINGERPRINT_GALLERY.get("chrome_120_win11", {})
-    
+
     if randomize:
-        randomizer = FingerprintRandomizer(profile)
+        randomizer = FingerprintRandomizer(profile, rng=rng)
         return randomizer.generate_variant()
-    
+
     return copy.deepcopy(profile)
 
 

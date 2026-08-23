@@ -15,9 +15,8 @@ will always work without network access.
 """
 
 import json
-import os
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from pathlib import Path
 
 
@@ -62,18 +61,21 @@ class FingerprintUpdater:
             pass
     
     def _get_http_client(self):
-        """Get or create HTTP client for fetching data."""
+        """Get or create HTTP client for fetching data.
+
+        Uses the pluggable transport layer so this module never imports a
+        networking library directly (backend isolation rule).
+        """
         if self._http_client is None:
             try:
-                import httpx
-                self._http_client = httpx.Client(timeout=30.0)
-            except ImportError:
-                # Try requests as fallback
-                try:
-                    import requests
-                    self._http_client = requests
-                except ImportError:
-                    return None
+                from .transport import SessionConfig, select_transport
+
+                transport = select_transport("httpx")
+                self._http_client = transport.create_session(
+                    SessionConfig(timeout=30.0)
+                )
+            except Exception:
+                return None
         return self._http_client
     
     def _get_cache_path(self, source_name: str) -> Path:

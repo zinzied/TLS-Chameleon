@@ -757,16 +757,23 @@ def get_random_profile(browser: Optional[str] = None, os_name: Optional[str] = N
     return FINGERPRINT_GALLERY[random.choice(candidates)]
 
 
-def randomize_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
+def randomize_profile(profile: Dict[str, Any], rng: Optional[random.Random] = None) -> Dict[str, Any]:
     """
     Create a randomized variant of a profile.
-    
+
     This creates slight variations that still look like the same browser
     but differ enough to avoid pattern detection.
+
+    Args:
+        profile: Base profile dict from the gallery.
+        rng: Optional ``random.Random`` instance for deterministic
+            variants (same seed -> same variant). Defaults to the global
+            ``random`` module.
     """
+    rand = rng if rng is not None else random
     variant = copy.deepcopy(profile)
     randomization = variant.get("randomization", {})
-    
+
     # Minor User-Agent version variance
     if randomization.get("ua_minor_variance"):
         ua = variant.get("user_agent", "")
@@ -775,18 +782,18 @@ def randomize_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
         def bump_version(m):
             base = int(m.group(1))
             # Vary by -1 to +2
-            new_ver = max(0, base + random.choice([-1, 0, 0, 1, 1, 2]))
+            new_ver = max(0, base + rand.choice([-1, 0, 0, 1, 1, 2]))
             return f".{new_ver}"
         variant["user_agent"] = re.sub(r'\.(\d+)(?=\s|$)', bump_version, ua, count=1)
-    
+
     # Extension order variance (Firefox mainly)
     ext_variance = randomization.get("extension_variance", 0)
     if ext_variance > 0 and "extensions" in variant:
         exts = list(variant["extensions"])
         # Swap a few adjacent extensions
         for _ in range(min(ext_variance, len(exts) - 1)):
-            i = random.randint(0, len(exts) - 2)
+            i = rand.randint(0, len(exts) - 2)
             exts[i], exts[i + 1] = exts[i + 1], exts[i]
         variant["extensions"] = exts
-    
+
     return variant

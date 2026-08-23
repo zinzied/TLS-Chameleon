@@ -1,16 +1,13 @@
 import random
 import re
 import json
-import ssl
 import time
 from typing import Any, Dict, Optional, List, Callable, Union
-import threading
 from urllib.parse import urljoin, urlparse
 import http.cookiejar
 import os
 import copy
 import logging
-import collections
 import concurrent.futures
 
 # Global bounded pool for background asset prefetching
@@ -18,22 +15,26 @@ _ASSET_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 
 logger = logging.getLogger(__name__)
 
-# Global Domain Memory with maxlen=1000 to prevent unbounded growth
-# Maps domain -> successful_profile_name
-_DOMAIN_MEMORY: collections.OrderedDict[str, str] = collections.OrderedDict()
-_DOMAIN_MEMORY_MAX = 1000
-_DOMAIN_MEMORY_LOCK = threading.Lock()
+# Adaptive per-domain profile memory (Phase 4): bounded, expiring,
+# thread-safe, explainable. The legacy module-level names below are kept
+# as aliases so existing code (and tests) keep working unchanged.
+from .adaptive import DomainMemory, DEFAULT_DOMAIN_MEMORY_MAX
 
-from .profiles import PROFILES, DEFAULT_PROFILE, get_profile as profiles_get_profile
+_memory = DomainMemory(max_entries=DEFAULT_DOMAIN_MEMORY_MAX)
+_DOMAIN_MEMORY = _memory.data            # legacy OrderedDict view
+_DOMAIN_MEMORY_LOCK = _memory.lock       # legacy lock alias
+_DOMAIN_MEMORY_MAX = DEFAULT_DOMAIN_MEMORY_MAX
+
+from .profiles import PROFILES, DEFAULT_PROFILE
 from .magnet import Magnet
 
 # Import new v2.0 modules
 try:
-    from .fingerprint_gallery import (
+    from .fingerprint_gallery import (  # noqa: F401  (probe + re-export)
         FINGERPRINT_GALLERY,
+        get_random_profile,
         get_profile as gallery_get_profile,
         randomize_profile,
-        get_random_profile,
     )
     HAS_GALLERY = True
 except ImportError:
@@ -41,34 +42,25 @@ except ImportError:
     HAS_GALLERY = False
 
 try:
-    from .http2_simulator import HTTP2Profile, get_http2_profile
+    from .http2_simulator import HTTP2Profile, get_http2_profile  # noqa: F401  (probe)
     HAS_HTTP2_SIM = True
 except ImportError:
     HAS_HTTP2_SIM = False
 
-try:
-    from curl_cffi import requests as crequests
-    from curl_cffi import curl as ccurl
-except Exception:
-    crequests = None
-    ccurl = None
-
-try:
-    import httpx
-except Exception:
-    httpx = None
+from .transport import (
+    SessionConfig,
+    Transport,
+    select_transport,
+)
 
 
 def _select_engine(preferred: Optional[str]) -> str:
-    if preferred in ("curl", "httpx"):
-        if preferred == "curl" and crequests is None:
-            return "httpx"
-        if preferred == "httpx" and httpx is None:
-            return "curl" if crequests is not None else "httpx"
-        return preferred
-    if crequests is not None:
-        return "curl"
-    return "httpx"
+    """Deprecated: resolve an engine preference to an available backend name.
+
+    Kept as a compatibility shim; all selection logic now lives in
+    :mod:`tls_chameleon.transport.factory`.
+    """
+    return select_transport(preferred).name
 
 
 def _get_profile(name: Optional[str], use_gallery: bool = True) -> Dict[str, Any]:
@@ -99,14 +91,17 @@ def _get_profile(name: Optional[str], use_gallery: bool = True) -> Dict[str, Any
     return PROFILES.get(name, PROFILES.get(DEFAULT_PROFILE, {}))
 
 
-def _cipher_list(profile: Dict[str, Any], randomize: bool) -> Optional[str]:
+def _cipher_list(
+    profile: Dict[str, Any], randomize: bool, rng: Optional[random.Random] = None
+) -> Optional[str]:
     ciphers = list(profile.get("tls12_ciphers") or [])
     # Drop any GREASE markers (e.g. "grease_2570") -- not valid OpenSSL names
     ciphers = [c for c in ciphers if not str(c).startswith("grease_")]
     if not ciphers:
         return None
     if randomize:
-        random.shuffle(ciphers)
+        rand = rng if rng is not None else random
+        rand.shuffle(ciphers)
     return ":".join(ciphers)
 
 
@@ -115,6 +110,16 @@ class ChameleonResponse:
     def __init__(self, original_response: Any):
         self._resp = original_response
         self._magnet = None
+        self._trace = None  # Optional NetworkTrace (set when trace=True)
+
+    @property
+    def trace(self):
+        """Structured :class:`~tls_chameleon.diagnostics.NetworkTrace`.
+
+        Populated only when the request was made with ``trace=True``;
+        ``None`` otherwise. Headers are always redacted.
+        """
+        return self._trace
 
     @property
     def magnet(self):
@@ -178,6 +183,9 @@ class TLSChameleon:
         http3: Optional[bool] = None,
         verify: bool = True,
         ghost_mode: bool = False,
+        adaptive: bool = True,
+        adaptive_ttl: Optional[float] = None,
+        random_seed: Optional[Any] = None,
     ) -> None:
         # New v2.0: Handle profile parameter (takes precedence over fingerprint)
         self._explicit_profile = False
@@ -218,11 +226,22 @@ class TLSChameleon:
         self.http3 = http3
         self.verify = verify
         self.ghost_mode = ghost_mode
+        self.adaptive = adaptive
+        self.random_seed = random_seed
+        # Deterministic RNG: same seed + config => identical fingerprint
+        # choices. Derivation is stable across processes (SHA-256 of repr).
+        if random_seed is not None:
+            from .randomizer import derive_seed_rng
+
+            self._rng = derive_seed_rng(random_seed)
+        else:
+            self._rng = None
         
         # Internal state
         self._rotate_index = -1
         self._proxy_index = -1
         self.session = None
+        self._transport: Transport = select_transport(engine)
 
         # Normalize initial proxies
         if proxies and isinstance(proxies, str):
@@ -254,10 +273,11 @@ class TLSChameleon:
         # Get profile, applying randomization if enabled
         profile = _get_profile(self.profile_name)
         
-        # Apply randomization if enabled (v2.0 feature)
+        # Apply randomization if enabled (v2.0 feature); seeded RNG keeps
+        # the variant reproducible when random_seed is provided.
         if self.randomize and HAS_GALLERY:
             try:
-                profile = randomize_profile(profile)
+                profile = randomize_profile(profile, rng=self._rng)
             except Exception as e:
                 logger.debug(f"Randomization failed: {e}")
         
@@ -278,69 +298,24 @@ class TLSChameleon:
         if profile.get("sec_ch_ua_mobile"):
             self.headers["Sec-CH-UA-Mobile"] = profile.get("sec_ch_ua_mobile", "?0")
 
-        if self.engine == "curl" and crequests is not None:
-            impersonate = profile.get("impersonate")
-            
-            # Helper to build options
-            curl_opts = {}
-            cipher_str = _cipher_list(profile, self.randomize_ciphers)
-            if cipher_str and ccurl and hasattr(ccurl, "CURLOPT_SSL_CIPHER_LIST"):
-                curl_opts[ccurl.CURLOPT_SSL_CIPHER_LIST] = cipher_str
+        # Resolve the transport from the (possibly user-mutated) engine name,
+        # then build the session through the backend-agnostic interface.
+        self._transport = select_transport(self.engine)
+        self.engine = self._transport.name
 
-            self.session = crequests.Session(
-                impersonate=impersonate,
-                timeout=self.timeout,
-                curl_options=curl_opts
-            )
-            # Apply headers
-            self.session.headers.update(self.headers)
-            # Apply proxies 
-            if self.proxies:
-                self.session.proxies.update(self.proxies)
-            # Apply verification
-            self.session.verify = self.verify
-            
-            # Note: curls_cffi Session handles cookies automatically
+        cipher_str = _cipher_list(profile, self.randomize_ciphers, rng=self._rng)
 
-        elif self.engine == "httpx" and httpx is not None:
-            # Build SSL context with cipher configuration
-            ssl_context = ssl.create_default_context()
-            if not self.verify:
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-            
-            cipher_str = _cipher_list(profile, self.randomize_ciphers)
-            if cipher_str:
-                try:
-                    ssl_context.set_ciphers(cipher_str)
-                except Exception as e:
-                    logger.debug(f"Failed to set ciphers for httpx: {e}")
-            
-            # Create client with the configured SSL context
-            # Try to enable HTTP/3 if requested and supported by installed httpx
-            http2_flag = bool(self.http2) if self.http2 is not None else False
-            http3_flag = bool(self.http3) if self.http3 is not None else False
-            try:
-                self.session = httpx.Client(
-                    http2=http2_flag,
-                    http3=http3_flag,
-                    timeout=self.timeout,
-                    verify=ssl_context,
-                    follow_redirects=True
-                )
-            except TypeError:
-                # Older httpx doesn't support http3 kwarg; fall back
-                self.session = httpx.Client(
-                    http2=http2_flag,
-                    timeout=self.timeout,
-                    verify=ssl_context,
-                    follow_redirects=True
-                )
-            self.session.headers.update(self.headers)
-            if self.proxies:
-                self.session.proxies = self._normalize_proxy_for_httpx(self.proxies)
-        else:
-            raise RuntimeError(f"Engine {self.engine} not available.")
+        config = SessionConfig(
+            profile=profile,
+            cipher_suites=cipher_str,
+            timeout=self.timeout,
+            verify=self.verify,
+            proxies=self.proxies or None,
+            headers=dict(self.headers),
+            http2=self.http2,
+            http3=self.http3,
+        )
+        self.session = self._transport.create_session(config)
 
     def __enter__(self):
         return self
@@ -362,6 +337,16 @@ class TLSChameleon:
             return True
         return False
     
+    @property
+    def capabilities(self):
+        """Honest capability report for the backend currently in use.
+
+        Example:
+            client.capabilities.http3        # True only if really supported
+            client.capabilities.tls_fingerprint_spoofing
+        """
+        return self._transport.capabilities
+
     def get_fingerprint_info(self) -> Dict[str, Any]:
         """
         Return current fingerprint details for debugging.
@@ -379,10 +364,16 @@ class TLSChameleon:
             "impersonate": profile.get("impersonate"),
             "header_case": profile.get("header_case"),
             "randomized": self.randomize,
+            "random_seed": self.random_seed,
+            "adaptive": self.adaptive,
             "http2_priority": self.http2_priority,
             "engine": self.engine,
             "http3": bool(self.http3) if hasattr(self, 'http3') else False,
         }
+        
+        # Honest per-backend capabilities (what the session can actually do)
+        if getattr(self, "_transport", None) is not None:
+            info["capabilities"] = self._transport.capabilities.to_dict()
         
         # Add Sec-CH-UA if present
         if "sec_ch_ua" in profile:
@@ -418,12 +409,29 @@ class TLSChameleon:
         # Reinitialize session to apply changes
         self._init_session()
 
+    def profile_for(self, domain: str) -> Dict[str, Any]:
+        """Explain which profile the adaptive engine would use for a domain.
+
+        Returns:
+            ``{"profile", "reason", "confidence", "last_used"}``. ``profile``
+            is ``None`` when nothing was learned yet.
+        """
+        explanation = _memory.explain(domain)
+        if not self.adaptive:
+            explanation["reason"] = "adaptive engine disabled"
+            if explanation["profile"] is not None:
+                explanation["confidence"] = 0.0
+        elif self._explicit_profile:
+            explanation["reason"] = (
+                "explicit profile set; learned value would be ignored"
+            )
+        return explanation
+
     def request(self, method: str, url: str, **kwargs: Any):
         # Domain Memory Check (Adaptive Profile Selection)
         domain = urlparse(url).netloc
-        with _DOMAIN_MEMORY_LOCK:
-            memory_profile = _DOMAIN_MEMORY.get(domain)
-        if not self._explicit_profile and memory_profile:
+        memory_profile = _memory.lookup(domain) if self.adaptive else None
+        if not self._explicit_profile and self.adaptive and memory_profile:
             if memory_profile != self.profile_name and self._profile_exists(memory_profile):
                 logger.info(f"Domain Memory: Switching to known good profile '{memory_profile}' for {domain}")
                 self.profile_name = memory_profile
@@ -435,6 +443,10 @@ class TLSChameleon:
         
         # Prepare kwargs for the delegated call
         request_kwargs = kwargs.copy()
+
+        # trace=True is a TLS-Chameleon extension, not a backend kwarg.
+        want_trace = bool(request_kwargs.pop("trace", False))
+        started = time.perf_counter()
         
         # Rate limiting per domain
         if self.rate_limit and self.rate_limit > 0:
@@ -458,15 +470,13 @@ class TLSChameleon:
 
         attempt = 0
         while True:
-            # Proxy Rotation logic for this specific request attempt? 
+            # Proxy Rotation logic for this specific request attempt?
             # If we Rotate Proxy, we usually update the Session's proxy or pass it in kwargs.
             current_proxy = self._current_proxy()
             if current_proxy and current_proxy != self.proxies:
-                 # Override session proxy for this request
-                 if self.engine == "curl":
-                     request_kwargs["proxies"] = current_proxy
-                 else:
-                     request_kwargs["proxies"] = self._normalize_proxy_for_httpx(current_proxy)
+                 # Override session proxy for this request (backend-agnostic;
+                 # the transport translates/removes the kwarg as needed)
+                 request_kwargs["proxies"] = current_proxy
 
             try:
                 # Remove curl_options from kwargs if present (since Session.request doesn't take it)
@@ -476,6 +486,9 @@ class TLSChameleon:
                 # Check for mimic_assets
                 mimic_assets = request_kwargs.pop("mimic_assets", False)
 
+                self.session, request_kwargs = self._transport.adapt_request(
+                    self.session, request_kwargs
+                )
                 resp = self.session.request(method, url, headers=req_headers, **request_kwargs)
                 
                 # Wrap response
@@ -489,6 +502,12 @@ class TLSChameleon:
                     self._mimic_assets(getattr(resp, "text", ""), url)
 
                 # Return wrapped response so checking blocking status works on wrapper too (since it proxies)
+                if want_trace:
+                    wrapped_resp._trace = self._build_trace(
+                        method, url, resp,
+                        request_headers=req_headers,
+                        total_ms=(time.perf_counter() - started) * 1000.0,
+                    )
                 resp = wrapped_resp
                 
             except Exception as e:
@@ -502,13 +521,8 @@ class TLSChameleon:
             
             if not blocked:
                 # Success! Learn this profile works for this domain
-                with _DOMAIN_MEMORY_LOCK:
-                    if domain not in _DOMAIN_MEMORY or _DOMAIN_MEMORY[domain] != self.profile_name:
-                        logger.info(f"Domain Memory: Learning profile '{self.profile_name}' works for {domain}")
-                        _DOMAIN_MEMORY[domain] = self.profile_name
-                        _DOMAIN_MEMORY.move_to_end(domain)
-                        while len(_DOMAIN_MEMORY) > _DOMAIN_MEMORY_MAX:
-                            _DOMAIN_MEMORY.popitem(last=False)
+                if self.adaptive:
+                    _memory.remember(domain, self.profile_name)
                 return resp
 
             if attempt >= self.max_retries:
@@ -527,14 +541,15 @@ class TLSChameleon:
                 # OR we should update self.proxies and re-init. 
                 # Let's update self.proxies to be sticky
                 self.proxies = self._current_proxy()
-                if self.engine == "curl":
-                    self.session.proxies.update(self.proxies or {})
-                # For httpx we'd need to set .proxies, but it's immutable-ish. Re-init is safer.
-                if self.engine == "httpx":
-                     self._init_session()
+                # Transport decides whether mutating (curl) or rebuilding
+                # (httpx) the session is the right way to swap proxies.
+                if self.session is not None:
+                    self.session = self._transport.apply_proxies(self.session, self.proxies)
+                else:
+                    self._init_session()
 
             delay = self.retry_backoff_base * (2 ** (attempt - 1))
-            jitter = random.uniform(0, self.retry_jitter)
+            jitter = self._rand().uniform(0, self.retry_jitter)
             
             # Call on_retry hook if set
             if self.on_retry:
@@ -544,6 +559,22 @@ class TLSChameleon:
                     logger.debug(f"on_retry hook error: {e}")
             
             time.sleep(delay + jitter)
+
+    def _build_trace(self, method: str, url: str, response: Any,
+                     request_headers: Dict[str, str],
+                     total_ms: float):
+        """Build a NetworkTrace for the just-completed request (lazy import)."""
+        from .diagnostics.trace import collect_trace
+
+        return collect_trace(
+            method,
+            url,
+            getattr(response, "_resp", response),
+            backend=getattr(self._transport, "name", None),
+            profile=self.profile_name,
+            request_headers=request_headers or dict(self.headers),
+            total_ms=total_ms,
+        )
 
     def _is_block(self, resp: Any) -> bool:
         if not resp:
@@ -574,7 +605,12 @@ class TLSChameleon:
             return True
         return False
 
+    def _rand(self):
+        """Seeded RNG when random_seed was given, else the global module."""
+        return self._rng if self._rng is not None else random
+
     def _rotate_profile(self) -> None:
+        rand = self._rand()
         if self.rotate_profiles:
             self._rotate_index = (self._rotate_index + 1) % len(self.rotate_profiles)
             name = self.rotate_profiles[self._rotate_index]
@@ -586,7 +622,7 @@ class TLSChameleon:
             names = [n for n in all_profiles if n != self.profile_name]
             if not names:
                 return
-            name = random.choice(names)
+            name = rand.choice(names)
         
         self.profile_name = name
         # User-Agent update happens in _init_session calling _get_profile
@@ -605,17 +641,6 @@ class TLSChameleon:
                 return {"http": p, "https": p}
             return p
         return self.proxies or None
-
-    def _normalize_proxy_for_httpx(self, proxy):
-        if proxy is None:
-            return None
-        if isinstance(proxy, str):
-            return {"http://": proxy, "https://": proxy} # HTMX usually prefers protocol
-        if isinstance(proxy, dict):
-            # mapping requests style to httpx style can be tricky (http -> http://)
-            # but httpx handles dicts reasonably well now.
-            return proxy
-        return None
 
     def _apply_site_preset(self, site: str) -> None:
         s = site.lower()
@@ -670,9 +695,10 @@ class TLSChameleon:
 
     def _apply_ghost_mode(self, method: str, url: str, kwargs: Any) -> None:
         """Simulates human behavior and masks traffic patterns."""
+        rand = self._rand()
         # 1. Timing Jitter (Poisson distribution representation)
         # Random delay between 0.1 and 1.5 seconds for every request if ghost_mode is on
-        delay = random.expovariate(1.0 / 0.5) # Average 0.5s delay
+        delay = rand.expovariate(1.0 / 0.5) # Average 0.5s delay
         delay = min(max(delay, 0.1), 3.0) # Clamp
         time.sleep(delay)
         
@@ -681,8 +707,8 @@ class TLSChameleon:
             data = kwargs.get("data")
             json_data = kwargs.get("json")
             
-            padding_key = f"_{random.getrandbits(16):x}"
-            padding_val = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=random.randint(8, 32)))
+            padding_key = f"_{rand.getrandbits(16):x}"
+            padding_val = "".join(rand.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=rand.randint(8, 32)))
             
             if isinstance(data, dict):
                 data[padding_key] = padding_val
@@ -744,6 +770,8 @@ class TLSChameleon:
             "rotate_index": self._rotate_index,
             "proxy_index": self._proxy_index,
             "http3": bool(self.http3) if hasattr(self, 'http3') else False,
+            "adaptive": self.adaptive,
+            "random_seed": self.random_seed,
             "cookies": cookies_list,
         }
 
@@ -755,6 +783,17 @@ class TLSChameleon:
         self.headers = state.get("headers", self.headers)
         self._rotate_index = state.get("rotate_index", -1)
         self._proxy_index = state.get("proxy_index", -1)
+        if "adaptive" in state:
+            self.adaptive = bool(state["adaptive"])
+        if "random_seed" in state and state["random_seed"] != self.random_seed:
+            from .randomizer import derive_seed_rng
+
+            self.random_seed = state["random_seed"]
+            self._rng = (
+                derive_seed_rng(self.random_seed)
+                if self.random_seed is not None
+                else None
+            )
         self._init_session()
 
         for c in state.get("cookies", []):
@@ -981,7 +1020,8 @@ _SESSION_KWARGS = {
     'randomize_ciphers', 'timeout', 'proxies', 'rotate_profiles', 'on_block',
     'max_retries', 'retry_backoff_base', 'retry_jitter', 'block_detector',
     'on_retry', 'rate_limit',
-    'site', 'proxies_pool', 'header_order', 'http2', 'verify', 'ghost_mode',
+    'site', 'proxies_pool', 'header_order', 'http2', 'http3', 'verify',
+    'ghost_mode', 'adaptive', 'adaptive_ttl', 'random_seed',
 }
 
 def _split_kwargs(kwargs: Dict[str, Any]):

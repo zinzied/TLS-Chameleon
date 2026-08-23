@@ -76,7 +76,55 @@ try:
 except ImportError:
     FingerprintUpdater = None
 
-__version__ = "2.2.0"
+# Phase 2: structured fingerprint system
+try:
+    from .fingerprint import (
+        Fingerprint,
+        FingerprintRegistry,
+        FingerprintSimilarity,
+        SimilarityResult,
+        SimilarityWeights,
+        TLSFingerprint,
+        HTTP2Fingerprint,
+        HeaderFingerprint,
+        Metadata,
+        ValidationIssue,
+        validate_fingerprint,
+        validate_profile_dict,
+        diff_fingerprints,
+        DiffReport,
+        capture,
+        CaptureResult,
+        HeaderProfile,
+        ConsistencyIssue,
+        check_header_consistency,
+    )
+except ImportError:  # pragma: no cover - defensive
+    pass
+
+# Phase 3: diagnostics + redaction
+from .diagnostics import (
+    NetworkTrace,
+    collect_trace,
+    InspectResult,
+    inspect_url,
+    CheckResult,
+    DoctorReport,
+    doctor,
+)
+from .security.redaction import (
+    REDACTED,
+    is_sensitive_header,
+    redact_headers,
+    redact_mapping,
+    redact_url,
+)
+
+# Phase 4: adaptive engine + deterministic randomization
+from .adaptive import DomainMemory, DEFAULT_DOMAIN_MEMORY_MAX
+from .randomizer import derive_seed_rng
+
+__version__ = "3.0.0"
 
 __all__ = [
     # Core classes
@@ -130,4 +178,28 @@ __all__ = [
     # Auto-update
     "FingerprintUpdater",
     "update_fingerprints",
+
+    # Diagnostics (Phase 3)
+    "NetworkTrace",
+    "collect_trace",
+    "InspectResult",
+    "inspect_url",
+    "CheckResult",
+    "DoctorReport",
+    "doctor",
+
+    # Redaction (Phase 3)
+    "REDACTED",
+    "is_sensitive_header",
+    "redact_headers",
+    "redact_mapping",
+    "redact_url",
+
+    # Adaptive engine (Phase 4)
+    "DomainMemory",
+    "DEFAULT_DOMAIN_MEMORY_MAX",
+    "derive_seed_rng",
+    "HeaderProfile",
+    "ConsistencyIssue",
+    "check_header_consistency",
 ]

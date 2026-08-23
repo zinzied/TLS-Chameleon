@@ -1,5 +1,4 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from tls_chameleon import TLSChameleon, Magnet, ChameleonResponse
 
 def test_magnet_get_forms():

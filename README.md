@@ -56,15 +56,39 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 
 ## 📦 Install
 
-You can install `TLS-Chameleon` directly from PyPI:
-
 ```bash
-pip install tls-chameleon[curl]
-# or to enable HTTP/3 (QUIC) support when available:
-# pip install tls-chameleon[http3]
+pip install tls-chameleon            # core: works out of the box via httpx
+pip install tls-chameleon[curl]      # + curl-impersonate backend (JA3 spoofing)
+pip install tls-chameleon[native]    # + primp/rustls backend (JA3 spoofing, no curl)
+pip install tls-chameleon[all]       # everything
 ```
 
-> **Note**: The `[curl]` extra is required for TLS fingerprint spoofing. The `http3` extra installs httpx's HTTP/3 support (aioquic) when available; HTTP/3 support in Python depends on the httpx/httpcore/aioquic stack and may be best-effort on some platforms.
+> **Backend honesty**: without `[curl]` or `[native]`, TLS-Chameleon runs on the
+> httpx fallback — standard OpenSSL TLS, **no JA3 spoofing**. The active backend
+> and its true capabilities are always reported:
+
+```python
+from tls_chameleon import TLSSession
+
+client = TLSSession()
+print(client.engine)            # "curl" | "native" | "httpx"
+print(client.capabilities.http3)
+print(client.capabilities.tls_fingerprint_spoofing)   # False on httpx!
+```
+
+### Pluggable backends
+
+Networking lives behind `tls_chameleon.transport` with automatic selection
+(`curl → native → httpx`). Backends are isolated: only
+`transport/curl_backend.py` may import `curl_cffi`, only
+`transport/primp_backend.py` may import `primp`, only
+`transport/httpx_backend.py` may import `httpx` — the rest of the library
+(and your code) never touches them. Custom backends plug in via
+`tls_chameleon.transport.register_transport`.
+
+Migrating from raw `curl_cffi`? See [`docs/migration/curl_cffi.md`](docs/migration/curl_cffi.md).
+Architecture details and the v3 migration plan:
+[`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md).
 
 ## ⚡ Quick Start
 
@@ -227,7 +251,7 @@ variant2 = randomizer.generate_variant()
 | `fingerprint` | `str` | `'chrome_120'` | Legacy profile name (use `profile` for v2.0 profiles) |
 | `randomize` | `bool` | `False` | Enable fingerprint randomization. **New in v2.0** |
 | `http2_priority` | `str` | `None` | HTTP/2 priority simulation (`'chrome'`, `'firefox'`, `'safari'`). **New in v2.0** |
-| `engine` | `str` | `'curl'` | HTTP engine (`'curl'` or `'httpx'`) |
+| `engine` | `str` | `'auto'` | Networking backend (`'curl'`, `'httpx'`; auto-selects the best installed one) |
 | `randomize_ciphers` | `bool` | `False` | Shuffle cipher suite order |
 | `timeout` | `float` | `30.0` | Request timeout in seconds |
 | `headers` | `dict` | `None` | Custom headers to add |
