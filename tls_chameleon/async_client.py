@@ -60,6 +60,7 @@ class AsyncTLSChameleon:
         ghost_mode: bool = False,
         adaptive: bool = True,
         random_seed: Optional[Any] = None,
+        seed: Optional[Any] = None,
     ) -> None:
         self._explicit_profile = False
         if profile:
@@ -92,6 +93,9 @@ class AsyncTLSChameleon:
         self.verify = verify
         self.ghost_mode = ghost_mode
         self.adaptive = adaptive
+        # ``seed`` is a documented alias of ``random_seed`` (3.1).
+        if random_seed is None and seed is not None:
+            random_seed = seed
         self.random_seed = random_seed
         if random_seed is not None:
             from .randomizer import derive_seed_rng
@@ -273,3 +277,18 @@ class AsyncTLSChameleon:
         return await self.request("OPTIONS", url, **kwargs)
 
 AsyncSession = AsyncTLSChameleon
+
+
+class AsyncChameleon(AsyncTLSChameleon):
+    """
+    High-level async entry point (v3.1). Drop-in subclass of
+    :class:`AsyncTLSChameleon`; accepts ``backend=`` (alias of ``engine``)
+    and ``seed=`` (alias of ``random_seed``).
+    """
+
+    def __init__(self, profile=None, backend=None, seed=None, **kwargs):
+        if backend is not None and "engine" not in kwargs:
+            kwargs["engine"] = backend
+        if seed is not None and kwargs.get("random_seed") is None:
+            kwargs["random_seed"] = seed
+        super().__init__(profile=profile, **kwargs)

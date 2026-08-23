@@ -48,6 +48,7 @@ except ImportError:
     HAS_HTTP2_SIM = False
 
 from .transport import (
+    ProxyConfig,
     SessionConfig,
     Transport,
     select_transport,
@@ -106,12 +107,77 @@ def _cipher_list(
 
 
 class ChameleonResponse:
-    """Wrapper around Response to add Magnet features."""
+    """TLS-Chameleon-owned HTTP response.
+
+    This is the ONLY response type users interact with. Backend response
+    objects never escape the transport layer: attributes are an explicit,
+    documented surface; anything else raises ``AttributeError`` naming the
+    supported fields instead of silently leaking backend internals.
+    """
+
+    _SUPPORTED = (
+        "status_code", "text", "content", "headers", "cookies", "url",
+        "encoding", "history", "ok", "json()", "raise_for_status()",
+        "magnet", "trace",
+    )
+
     def __init__(self, original_response: Any):
         self._resp = original_response
         self._magnet = None
         self._trace = None  # Optional NetworkTrace (set when trace=True)
 
+    # -- explicit, owned surface --------------------------------------
+    @property
+    def status_code(self) -> int:
+        return getattr(self._resp, "status_code")
+
+    @property
+    def text(self) -> str:
+        return getattr(self._resp, "text") or ""
+
+    @property
+    def content(self) -> bytes:
+        return getattr(self._resp, "content")
+
+    @property
+    def url(self) -> str:
+        return str(getattr(self._resp, "url", ""))
+
+    @property
+    def encoding(self):
+        return getattr(self._resp, "encoding", None)
+
+    @property
+    def headers(self) -> Dict[str, str]:
+        """Received response headers as a plain dict (owned copy)."""
+        return dict(getattr(self._resp, "headers", {}) or {})
+
+    @property
+    def cookies(self) -> Dict[str, Any]:
+        """Cookies from this response as a plain dict (owned copy)."""
+        return dict(getattr(self._resp, "cookies", {}) or {})
+
+    @property
+    def history(self) -> list:
+        return list(getattr(self._resp, "history", []) or [])
+
+    @property
+    def ok(self) -> bool:
+        status = self.status_code
+        return status < 400
+
+    def json(self, **kwargs: Any) -> Any:
+        return getattr(self._resp, "json")(**kwargs)
+
+    def raise_for_status(self) -> "ChameleonResponse":
+        raiser = getattr(self._resp, "raise_for_status", None)
+        if callable(raiser):
+            raiser()
+        elif self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code} for {self.url}")
+        return self
+
+    # -- TLS-Chameleon extensions -------------------------------------
     @property
     def trace(self):
         """Structured :class:`~tls_chameleon.diagnostics.NetworkTrace`.
@@ -124,8 +190,23 @@ class ChameleonResponse:
     @property
     def magnet(self):
         if self._magnet is None:
-            self._magnet = Magnet(getattr(self._resp, "text", "") or "")
+            self._magnet = Magnet(self.text)
         return self._magnet
+
+    # -- ownership guard ----------------------------------------------
+    def __getattr__(self, name: str):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        raise AttributeError(
+            f"'ChameleonResponse' object has no attribute '{name}'. "
+            f"Supported: {', '.join(ChameleonResponse._SUPPORTED)}"
+        )
+
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        try:
+            return f"<ChameleonResponse [{self.status_code}]>"
+        except Exception:
+            return "<ChameleonResponse>"
         
     def json_fuzzy(self):
         """Attempts to parse JSON from broken/JSONP responses."""
@@ -139,12 +220,6 @@ class ChameleonResponse:
              # Try simple trailing comma fix
              t = re.sub(r',\s*([}\]])', r'\1', t)
              return json.loads(t)
-
-    def __getattr__(self, name):
-        return getattr(self._resp, name)
-
-    def __repr__(self):
-        return repr(self._resp)
 
 
 class TLSChameleon:
@@ -186,6 +261,7 @@ class TLSChameleon:
         adaptive: bool = True,
         adaptive_ttl: Optional[float] = None,
         random_seed: Optional[Any] = None,
+        seed: Optional[Any] = None,
     ) -> None:
         # New v2.0: Handle profile parameter (takes precedence over fingerprint)
         self._explicit_profile = False
@@ -227,6 +303,9 @@ class TLSChameleon:
         self.verify = verify
         self.ghost_mode = ghost_mode
         self.adaptive = adaptive
+        # ``seed`` is a documented alias of ``random_seed`` (3.1).
+        if random_seed is None and seed is not None:
+            random_seed = seed
         self.random_seed = random_seed
         # Deterministic RNG: same seed + config => identical fingerprint
         # choices. Derivation is stable across processes (SHA-256 of repr).
@@ -244,10 +323,9 @@ class TLSChameleon:
         self._transport: Transport = select_transport(engine)
 
         # Normalize initial proxies
-        if proxies and isinstance(proxies, str):
-            self.proxies = {"http": proxies, "https": proxies}
-        else:
-            self.proxies = proxies or {}
+        # Accept str | requests-style dict | ProxyConfig; normalize once.
+        _pcfg = ProxyConfig.coerce(proxies)
+        self.proxies = _pcfg.to_requests_dict() if _pcfg else {}
 
         # Initial Headers
         self.headers = headers or {}
@@ -762,18 +840,22 @@ class TLSChameleon:
                     "expires": getattr(c, "expires", None)
                 })
 
-        return {
-            "profile_name": self.profile_name,
-            "engine": self.engine,
-            "proxies": self.proxies,
-            "headers": self.headers,
-            "rotate_index": self._rotate_index,
-            "proxy_index": self._proxy_index,
-            "http3": bool(self.http3) if hasattr(self, 'http3') else False,
-            "adaptive": self.adaptive,
-            "random_seed": self.random_seed,
-            "cookies": cookies_list,
-        }
+        # Backend-independent state object (3.1); serialized keys unchanged.
+        from .session_state import SessionState
+
+        state = SessionState(
+            profile_name=self.profile_name,
+            engine=self.engine,
+            proxies=self.proxies,
+            headers=self.headers,
+            rotate_index=self._rotate_index,
+            proxy_index=self._proxy_index,
+            http3=bool(self.http3) if hasattr(self, 'http3') else False,
+            adaptive=self.adaptive,
+            random_seed=self.random_seed,
+            cookies=cookies_list,
+        )
+        return state.to_dict()
 
     def import_session(self, state: Dict[str, Any]) -> None:
         """Restores session state."""
@@ -1021,7 +1103,7 @@ _SESSION_KWARGS = {
     'max_retries', 'retry_backoff_base', 'retry_jitter', 'block_detector',
     'on_retry', 'rate_limit',
     'site', 'proxies_pool', 'header_order', 'http2', 'http3', 'verify',
-    'ghost_mode', 'adaptive', 'adaptive_ttl', 'random_seed',
+    'ghost_mode', 'adaptive', 'adaptive_ttl', 'random_seed', 'seed',
 }
 
 def _split_kwargs(kwargs: Dict[str, Any]):
@@ -1093,3 +1175,30 @@ def list_available_profiles() -> List[str]:
         profiles.extend(FINGERPRINT_GALLERY.keys())
     return sorted(set(profiles))
 
+
+class Chameleon(TLSChameleon):
+    """
+    High-level entry point (v3.1): WHAT vs HOW separation.
+
+    ``profile=`` describes the fingerprint you want (backend-independent);
+    ``backend=/engine=`` describes how requests are executed. ``Chameleon``
+    is a drop-in subclass of :class:`TLSChameleon` -- everything documented
+    there works identically.
+
+    Example:
+        from tls_chameleon import Chameleon
+
+        client = Chameleon(profile="chrome_124_linux")
+        response = client.get("https://example.com")
+
+    Args (in addition to all TLSChameleon parameters):
+        backend: alias for ``engine`` ("curl", "native", "httpx").
+        seed: alias for ``random_seed``.
+    """
+
+    def __init__(self, profile=None, backend=None, seed=None, **kwargs):
+        if backend is not None and "engine" not in kwargs:
+            kwargs["engine"] = backend
+        if seed is not None and kwargs.get("random_seed") is None:
+            kwargs["random_seed"] = seed
+        super().__init__(profile=profile, **kwargs)

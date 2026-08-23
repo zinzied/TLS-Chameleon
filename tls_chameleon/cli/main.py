@@ -102,21 +102,31 @@ def build_parser() -> argparse.ArgumentParser:
                                     help="Validate a fingerprint JSON file")
     fp_validate.add_argument("file")
 
-    # benchmark ---------------------------------------------------------
+    # benchmark / compare-backends --------------------------------------
+    def _add_benchmark_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--scenario", action="append",
+                       choices=("http1", "tls"), default=None,
+                       help="Scenario to run (repeatable; default: all)")
+        p.add_argument("--requests", type=int, default=30,
+                       help="Measured requests per client (default 30)")
+        p.add_argument("--warmup", type=int, default=5,
+                       help="Discarded warm-up requests (default 5)")
+        p.add_argument("--save", default=None, metavar="PATH",
+                       help="Also write the full JSON report to PATH")
+        p.add_argument("--json", action="store_true")
+
     p_bench = sub.add_parser(
         "benchmark",
         help="Reproducible local benchmarks (see docs/BENCHMARK_METHODOLOGY.md)",
     )
-    p_bench.add_argument("--scenario", action="append",
-                         choices=("http1", "tls"), default=None,
-                         help="Scenario to run (repeatable; default: all)")
-    p_bench.add_argument("--requests", type=int, default=30,
-                         help="Measured requests per client (default 30)")
-    p_bench.add_argument("--warmup", type=int, default=5,
-                         help="Discarded warm-up requests (default 5)")
-    p_bench.add_argument("--save", default=None, metavar="PATH",
-                         help="Also write the full JSON report to PATH")
-    p_bench.add_argument("--json", action="store_true")
+    _add_benchmark_args(p_bench)
+
+    # Alias per spec §34: same runner, backend-comparison framing.
+    p_cmp = sub.add_parser(
+        "compare-backends",
+        help="Alias of 'benchmark': compare curl / native / httpx backends",
+    )
+    _add_benchmark_args(p_cmp)
 
     # version -----------------------------------------------------------
     p_version = sub.add_parser("version", help="Print version information")
@@ -158,6 +168,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "diff": cmd_diff.run,
         "fingerprint": cmd_fingerprint.run,
         "benchmark": cmd_benchmark.run,
+        "compare-backends": cmd_benchmark.run,  # alias (spec §34)
         "version": _run_version,
     }
     handler = handlers.get(args.command)

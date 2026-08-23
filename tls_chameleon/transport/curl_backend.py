@@ -52,7 +52,10 @@ class CurlTransport(Transport):
         backend_name="curl",
         tls_fingerprint_spoofing=True,
         custom_cipher_order=True,  # applied when CurlOpt.SSL_CIPHER_LIST exists
+        tls_customization=True,
+        http1=True,
         http2=True,
+        websocket=True,  # curl_cffi >= 0.13 exposes WebSocket support
         # HTTP/3 exists in recent libcurl builds but is NOT exercised by this
         # backend yet; report it honestly as unsupported.
         http3=False,

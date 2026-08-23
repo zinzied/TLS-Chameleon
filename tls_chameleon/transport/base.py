@@ -8,11 +8,12 @@ must stay backend-agnostic.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, ClassVar, Dict, Mapping, Optional
 
 __all__ = [
     "BackendUnavailableError",
     "Capabilities",
+    "ProxyConfig",
     "SessionConfig",
     "Transport",
 ]
@@ -20,6 +21,46 @@ __all__ = [
 
 class BackendUnavailableError(RuntimeError):
     """Raised when no requested backend is importable/usable."""
+
+
+@dataclass(frozen=True)
+class ProxyConfig:
+    """Backend-independent proxy description.
+
+    Accepts and normalizes the historical input shapes:
+    ``"http://proxy:8080"`` (str), requests-style dicts
+    ``{"http": ..., "https": ...}``, or this dataclass directly.
+    Unknown dict keys are preserved verbatim via :attr:`extra`.
+    """
+
+    http: Optional[str] = None
+    https: Optional[str] = None
+    extra: Dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def coerce(cls, value: Any) -> Optional["ProxyConfig"]:
+        if value is None or isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(http=value, https=value)
+        if isinstance(value, Mapping):
+            http_v = value.get("http") or value.get("http://")
+            https_v = value.get("https") or value.get("https://")
+            known = {"http", "https", "http://", "https://"}
+            extra = {k: v for k, v in value.items() if k not in known}
+            return cls(http=http_v, https=https_v, extra=extra)
+        raise TypeError(
+            f"proxies must be str, dict or ProxyConfig, got {type(value).__name__}"
+        )
+
+    def to_requests_dict(self) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+        if self.http:
+            out["http"] = self.http
+        if self.https:
+            out["https"] = self.https
+        out.update(self.extra)
+        return out
 
 
 @dataclass(frozen=True)
@@ -35,22 +76,34 @@ class Capabilities:
     tls_fingerprint_spoofing: bool = False
     # Custom cipher-suite ordering can be applied to the TLS handshake.
     custom_cipher_order: bool = False
+    # Broader TLS customization beyond ciphers (extensions, curves, ALPN...).
+    tls_customization: bool = False
+    http1: bool = True
     http2: bool = False
     http3: bool = False
     async_support: bool = False
     streaming: bool = False
     proxies: bool = False
+    websocket: bool = False
+    # True only when the backend can observe its own fingerprint in-band
+    # (without an external echo endpoint). Currently false for all backends;
+    # capture works through echo endpoints instead.
+    fingerprint_capture: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "backend": self.backend_name,
             "tls_fingerprint_spoofing": self.tls_fingerprint_spoofing,
             "custom_cipher_order": self.custom_cipher_order,
+            "tls_customization": self.tls_customization,
+            "http1": self.http1,
             "http2": self.http2,
             "http3": self.http3,
             "async_support": self.async_support,
             "streaming": self.streaming,
             "proxies": self.proxies,
+            "websocket": self.websocket,
+            "fingerprint_capture": self.fingerprint_capture,
         }
 
 

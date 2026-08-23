@@ -1,5 +1,35 @@
 # CHANGELOG
 
+## v3.1.0 — Architecture Evolution & Independence
+
+Audit-first release: `docs/ARCHITECTURE_AUDIT_3_0_1.md` maps the 3.1
+specification onto 3.0.1 and identifies eight gaps (M1–M8); this release
+closes exactly those. Everything else in the spec was already delivered by
+v3.0.x and is tabulated in the audit.
+
+- **M1 — High-level API**: new `Chameleon` / `AsyncChameleon` public classes
+  (`profile=` = WHAT, `backend=` = HOW; drop-in subclasses of
+  `TLSSession`/`AsyncSession`). `seed=` accepted as documented alias of
+  `random_seed` on all clients.
+- **M2 — Owned response**: `ChameleonResponse` no longer proxies unknown
+  attributes to backend objects. Explicit surface:
+  `status_code/text/content/headers/cookies/url/encoding/history/ok/
+  json()/raise_for_status()` + `.magnet/.trace`; anything else raises a
+  helpful `AttributeError`. Backend types can no longer leak.
+- **M3 — Capability vocabulary**: added truthful `http1`, `tls_customization`,
+  `websocket` (curl only today), `fingerprint_capture` (false everywhere
+  until an in-band path exists) to every backend's report.
+- **M4 — ProxyConfig**: typed proxy description accepting str / dict /
+  ProxyConfig with full preservation of unknown dict keys; normalized once
+  at client construction.
+- **M5 — SessionState**: backend-independent dataclass behind
+  `export_session`; serialized keys unchanged (additive schema
+  `tls-chameleon.session-state/1`).
+- **M6 — CLI**: `chameleon compare-backends` alias of the benchmark runner.
+- **M7 — docs/research/**: index + starter analyses from our own captures
+  (JA4 family signatures; H2 SETTINGS comparison across families).
+- **M8** covered by seed alias above.
+
 ## v3.0.1
 - Docs-only release: README fully rewritten for v3 — honest IS/IS-NOT
   positioning, three-backend architecture, fingerprint system / diagnostics /

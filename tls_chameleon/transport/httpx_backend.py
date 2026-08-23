@@ -53,6 +53,8 @@ class HttpxTransport(Transport):
         # httpx uses the system OpenSSL handshake: no browser JA3 spoofing.
         tls_fingerprint_spoofing=False,
         custom_cipher_order=True,
+        tls_customization=True,
+        http1=True,
         http2=True,
         http3=_supports_http3(),
         async_support=True,

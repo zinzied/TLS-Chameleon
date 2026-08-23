@@ -222,6 +222,8 @@ class PrimpTransport(Transport):
         # Cipher order follows the selected impersonation profile rather
         # than an arbitrary OpenSSL cipher string.
         custom_cipher_order=False,
+        tls_customization=False,
+        http1=True,
         http2=True,
         # Present in the crate stack but NOT verified end-to-end yet;
         # reported honestly until proven (research doc §6.5).

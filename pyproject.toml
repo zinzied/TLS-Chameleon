@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tls-chameleon"
-version = "3.0.1"
+version = "3.1.0"
 description = "Fingerprint-aware HTTP networking toolkit: pluggable TLS/HTTP backends, structured fingerprint research, diagnostics, and reproducible experiments"
 readme = "README.md"
 requires-python = ">=3.8"

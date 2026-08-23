@@ -119,12 +119,18 @@ from .security.redaction import (
     redact_mapping,
     redact_url,
 )
+from .session_state import SessionState
+from .transport import ProxyConfig, SessionConfig
 
 # Phase 4: adaptive engine + deterministic randomization
 from .adaptive import DomainMemory, DEFAULT_DOMAIN_MEMORY_MAX
 from .randomizer import derive_seed_rng
 
-__version__ = "3.0.1"
+# v3.1: high-level WHAT-vs-HOW API
+from .client import Chameleon
+from .async_client import AsyncChameleon
+
+__version__ = "3.1.0"
 
 __all__ = [
     # Core classes
@@ -202,4 +208,11 @@ __all__ = [
     "HeaderProfile",
     "ConsistencyIssue",
     "check_header_consistency",
+
+    # High-level API (3.1)
+    "Chameleon",
+    "AsyncChameleon",
+    "ProxyConfig",
+    "SessionConfig",
+    "SessionState",
 ]
