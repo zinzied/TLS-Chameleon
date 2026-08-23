@@ -3,56 +3,61 @@
 <img width="2816" height="1536" alt="TLSChameleom" src="https://github.com/user-attachments/assets/aa4fe457-30c5-49f6-ba7b-1d8604816d81" />
 
 [![PyPI version](https://badge.fury.io/py/tls-chameleon.svg)](https://badge.fury.io/py/tls-chameleon)
+[![CI](https://github.com/zinzied/TLS-Chameleon/actions/workflows/ci.yml/badge.svg)](https://github.com/zinzied/TLS-Chameleon/actions/workflows/ci.yml)
 
-Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a simple, requests-like API.
+**TLS-Chameleon** is a modern Python HTTP networking stack with pluggable
+browser-fingerprint backends, structured fingerprint research tooling,
+diagnostics, and reproducible experiments — behind a simple,
+requests-like API.
 
-## 🆕 What's New in v2.0
+> **What it IS:** an HTTP client · a fingerprint-aware networking toolkit ·
+> a diagnostic system · a protocol-research framework.
+>
+> **What it is NOT:** a Cloudflare/WAF bypass guarantee · a CAPTCHA solver ·
+> an anonymity or stealth product. Detection outcomes depend on many factors
+> outside any client library's control.
 
-- **AI-Urllib4 Adaptive Features**:
-    - **Domain Memory**: "Learns" which profile works for a specific domain and remembers it.
-    - **Adaptive Headers**: Dynamically adjusts header casing and order (e.g., Title-Case for Firefox, lowercase for Chrome) to match the selected profile perfectly.
-- **45 Browser Profiles**: Chrome, Firefox, Safari, Edge across Windows 10, Windows 11, macOS, Linux, iOS, Android.
-- **Fingerprint Randomization**: Slight variations to avoid pattern detection.
-- **HTTP/2 Priority Simulation**: Browser-specific HTTP/2 SETTINGS.
-- **Auto-Update System**: Fetch latest JA3 fingerprints from online sources.
-- **Enhanced API**: New `TLSSession` class with `profile`, `randomize`, `http2_priority` parameters.
+## 🆕 What's New in v3.0.0
 
-## 🎯 Ideal For
-
-- **Professional Scraping**: Bypass Cloudflare, Akamai, and DataDome on E-commerce/Finance sites.
-- **Stealth Automation**: Mimic human behavior to avoid ML-based traffic analysis.
-- **Cybersecurity / OSINT**: Extract hidden JWTs, API keys, and metadata from protected portals.
-- **Price Intelligence**: Track competitors without being flagged or served "bot-only" prices.
+- **Pluggable transport architecture** — `curl`, `native` (primp/rustls) and
+  `httpx` backends behind one interface, auto-selected (`curl → native → httpx`)
+  with graceful degradation. curl_cffi is optional, never architectural.
+- **Structured fingerprint system** — typed models, registry over 48 profiles,
+  validator (rejects impossible/inconsistent configs), explainable similarity
+  scoring, field-level diffing, live capture via TLS echo endpoints.
+- **Diagnostics** — `response.trace`, `inspect_url()`, `doctor()` with
+  check-by-check verdicts; every output automatically redacted.
+- **Adaptive engine** — bounded/expiring/thread-safe domain memory with
+  explainable selection (`client.profile_for(domain)`); header-consistency
+  engine; deterministic randomization via `random_seed`.
+- **CLI** — `chameleon get / inspect / doctor / capture / diff /
+  fingerprint / benchmark / version`, all major commands with stable `--json`.
+- **Reproducible benchmarks** — real local-server harness, stored methodology,
+  no invented numbers.
+- **Honest capability reporting** — `client.capabilities.tls_fingerprint_spoofing`,
+  `.http3`, ... always reflect what the active backend actually does.
 
 ## 🚀 Features
 
-- **TLS Fingerprint Spoofing**: Built-in profiles for Chrome, Firefox, Safari, Edge (uses `curl_cffi` for realistic signatures).
-- **Multi-OS Support**: Profiles for Windows 10, Windows 11, macOS, Linux, iOS, and Android.
-- **Persistent Sessions**: Proper cookie handling and connection pooling (just like `requests.Session`).
-- **Magnet Module 🧲**: One-line data extraction (Emails, Tables, Forms, JSON-LD, Links).
-- **Smart Static ⚡**: Automatically fetch page assets (CSS/JS/Images) to mimic real browser traffic.
-- **Auto-Form 📝**: Find and submit forms automatically, handling hidden inputs and CSRF tokens.
-- **Humanize 🧠**: Built-in delays to mimic human reading/typing speed.
-- **Resilience**: Auto-rotation of proxies/profiles upon blocking (403/429/Cloudflare).
-- **Ghost Mode (Pro) 👻**: Stealth traffic shaping with randomized timing and payload padding.
-- **WAF Shield (Pro) 🛡️**: Automatic detection and adaptation for Cloudflare, Akamai, and DataDome.
-- **Header Morphing (Pro) 🧬**: Dynamic casing and ordering to match specific browser signatures perfectly.
-- **Deep Extract (Pro) 🕵️**: Find hidden JWTs, API keys, and JS configs in any page.
-
-### What's New in v2.2.0
-*   **Generative Fingerprint Engine**: Synthesize brand-new, cryptographically valid JA3/JA4 fingerprints on the fly using `gen://` URIs.
-*   **Async Parity**: Full HTTP method support (`get`, `post`, `put`, `delete`, `head`, `patch`, `options`) on `AsyncSession`.
-*   **Session State Persistence**: Full export/import including active cookies and proxy state.
-*   **Bounded Domain Memory**: High-performance LRU memory cache prevents memory leaks in long-running scrapers.
-*   **Thread-Safe Asset Mimicking**: Bounded thread pool for static asset prefetching.
-
-### What's New in v2.1.0
-*   **AI-Urllib4 Adaptive Features:** Domain Memory (auto-profile learning) and Adaptive Headers (dynamic casing/ordering to match profile).
-*   **Fingerprint Gallery:** Over 45+ meticulously crafted browser profiles (Chrome 120-130, Firefox 120-124, Safari, Edge) across Windows, macOS, Linux, and Mobile.
-*   **HTTP/2 Simulator:** Browser-specific HTTP/2 `SETTINGS`, Window sizes, and Priority frames.
-*   **Ghost Mode:** Stealth traffic shaping with randomized delays and payload padding.
-*   **WAF Adaptation:** Automatically detects and mitigates Cloudflare, Akamai, and DataDome.
-*   **Async Support:** Native `asyncio` support via `tls_chameleon.AsyncSession`.
+- **Three interchangeable backends**
+  - `curl` — curl-impersonate (curl_cffi): full JA3/JA4/H2 fingerprint control
+  - `native` — primp/rustls stack: browser impersonation without libcurl
+  - `httpx` — honest fallback: standard OpenSSL TLS (no JA3 spoofing)
+- **48+ versioned profiles**: Chrome, Firefox, Safari, Edge across
+  Windows 10/11, macOS, Linux, iOS, Android — plus a deterministic
+  generative engine (`gen://family/os/major/tier/seed`)
+- **Fingerprint research toolkit**: registry · validation · similarity ·
+  diff · live capture
+- **Diagnostics & doctor**: protocol/backend/timing traces, observed-vs-profile
+  comparison, actionable recommendations
+- **Adaptive behavior**: per-domain profile learning (bounded, expiring,
+  thread-safe, disableable), header casing/order morphing, WAF detection
+  with retry/backoff/rotation
+- **Deterministic randomization**: same seed ⇒ identical variants, cipher
+  order and jitter — reproducible experiments
+- **Resilience**: proxy/profile pools, rate limiting, ghost mode, `on_retry` hooks
+- **Magnet module 🧲**: emails, tables, forms, JSON-LD, deep extraction of
+  JWTs/API keys; optional AI providers (`[ai]` extra)
 
 ## 📦 Install
 
@@ -63,471 +68,218 @@ pip install tls-chameleon[native]    # + primp/rustls backend (JA3 spoofing, no 
 pip install tls-chameleon[all]       # everything
 ```
 
-> **Backend honesty**: without `[curl]` or `[native]`, TLS-Chameleon runs on the
-> httpx fallback — standard OpenSSL TLS, **no JA3 spoofing**. The active backend
-> and its true capabilities are always reported:
+> **Backend honesty:** without `[curl]` or `[native]` you get the httpx
+> fallback — standard OpenSSL TLS, **no JA3 spoofing**. The active backend and
+> its true capabilities are always inspectable:
 
 ```python
 from tls_chameleon import TLSSession
 
 client = TLSSession()
-print(client.engine)            # "curl" | "native" | "httpx"
-print(client.capabilities.http3)
+print(client.engine)                                  # "curl" | "native" | "httpx"
+print(client.capabilities.http3)                      # only if truly available
 print(client.capabilities.tls_fingerprint_spoofing)   # False on httpx!
 ```
 
-### Pluggable backends
+### Pluggable architecture
 
-Networking lives behind `tls_chameleon.transport` with automatic selection
-(`curl → native → httpx`). Backends are isolated: only
-`transport/curl_backend.py` may import `curl_cffi`, only
-`transport/primp_backend.py` may import `primp`, only
-`transport/httpx_backend.py` may import `httpx` — the rest of the library
-(and your code) never touches them. Custom backends plug in via
-`tls_chameleon.transport.register_transport`.
+```
+Public API  (TLSSession / AsyncSession — unchanged names since v2)
+     │
+tls_chameleon.transport.factory      # auto / curl / native / httpx (+ custom)
+     │
+Transport interface                  # duck-typed sessions, capability reports
+ ├─ CurlTransport    ← only module importing curl_cffi
+ ├─ PrimpTransport   ← only module importing primp
+ └─ HttpxTransport   ← only module importing httpx
+```
 
-Migrating from raw `curl_cffi`? See [`docs/migration/curl_cffi.md`](docs/migration/curl_cffi.md).
-Architecture details and the v3 migration plan:
-[`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md).
+Backends are strictly isolated (enforced by tests). Custom backends plug in
+via `tls_chameleon.transport.register_transport`.
 
 ## ⚡ Quick Start
 
-### 1. Simple Requests (Drop-in)
-
-```python
-from tls_chameleon import get
-
-# One-line spoofing
-r = get("https://httpbin.org/get", fingerprint="chrome_124")
-print(r.json())
-```
-
-### 2. Persistent Session (Recommended)
-
-Use `Session` (alias for `TLSChameleon`) to maintain cookies across requests:
-
-```python
-from tls_chameleon import Session
-
-with Session(fingerprint="chrome_120") as client:
-    # First request sets cookies
-    client.get("https://github.com/login")
-    
-    # Second request sends them back!
-    r = client.get("https://github.com/settings")
-```
-
-### 3. New v2.1 API with OS-Specific Profiles 🆕
-
 ```python
 from tls_chameleon import TLSSession
 
-# Select specific browser + OS combination
-session = TLSSession(
-    profile='chrome_124_linux',     # Linux Chrome 124
-    randomize=True,                  # Enable fingerprint randomization
-    http2_priority='chrome'          # Match HTTP/2 behavior
-)
-
-# Make requests
-response = session.get("https://example.com")
-
-# Debug: see what fingerprint is being used
-print(session.get_fingerprint_info())
-# {
-#     'profile_name': 'chrome_124_linux',
-#     'user_agent': 'Mozilla/5.0 (X11; Linux x86_64)...',
-#     'ja3_hash': 'cd08e31494f9531f560d64c695473da9',
-#     'randomized': True,
-#     ...
-# }
+with TLSSession(profile="chrome_130_win11") as client:
+    r = client.get("https://example.com")
+    print(r.status_code, r.text[:80])
+    print(client.engine)                 # which backend served this?
+    print(client.capabilities.to_dict()) # what can it really do?
 ```
 
-## 📚 Available Profiles (v2.1)
-
-### By Browser
-
-| Browser | Versions | OS Support |
-|---------|----------|------------|
-| **Chrome** | 120, 124, 125 | Windows 10, Windows 11, macOS, Linux, Android |
-| **Firefox** | 120, 124 | Windows 10, Windows 11, macOS, Linux |
-| **Safari** | iOS 16, iOS 17, macOS 13, macOS 14 | iOS, macOS |
-| **Edge** | 120, 124 | Windows 10, Windows 11 |
-
-### Profile Naming Convention
-
-```
-{browser}_{version}_{os}
-```
-
-Examples:
-- `chrome_124_win11` - Chrome 124 on Windows 11
-- `chrome_124_linux` - Chrome 124 on Linux
-- `firefox_120_macos` - Firefox 120 on macOS
-- `safari_ios17` - Safari on iOS 17
-- `edge_124_win10` - Edge 124 on Windows 10
-- `chrome_android_124` - Chrome 124 on Android
-
-### Convenience Aliases
-
-```python
-# Latest versions
-'chrome_latest'        # Latest Chrome on Windows 11
-'chrome_latest_linux'  # Latest Chrome on Linux
-'firefox_latest'       # Latest Firefox
-'safari_latest'        # Latest Safari
-'edge_latest'          # Latest Edge
-
-# Mobile
-'mobile_safari'        # Safari iOS 17
-'mobile_chrome'        # Chrome Android 124
-```
-
-### List Available Profiles
-
-```python
-from tls_chameleon import (
-    list_available_profiles,
-    get_profiles_by_browser,
-    get_profiles_by_os
-)
-
-# All 45 profiles
-all_profiles = list_available_profiles()
-print(f"Total: {len(all_profiles)} profiles")
-
-# Filter by browser
-chrome_profiles = get_profiles_by_browser("chrome")
-# ['chrome_120_win11', 'chrome_120_win10', 'chrome_120_linux', ...]
-
-# Filter by OS
-linux_profiles = get_profiles_by_os("linux")
-# ['chrome_120_linux', 'chrome_124_linux', 'firefox_120_linux', ...]
-```
-
-## 🎲 Fingerprint Randomization
-
-Enable slight variations to avoid pattern detection:
-
-```python
-from tls_chameleon import TLSSession
-
-# Each session gets a slightly different fingerprint
-session = TLSSession(
-    profile='chrome_124_win11',
-    randomize=True  # Enable randomization
-)
-
-# Variations include:
-# - Minor User-Agent version changes
-# - TLS extension order shuffles (where browsers allow)
-# - Slight cipher order variations
-```
-
-### Manual Randomization
-
-```python
-from tls_chameleon import FingerprintRandomizer, get_profile
-
-# Get base profile
-profile = get_profile("chrome_124_win11")
-
-# Create randomizer
-randomizer = FingerprintRandomizer(profile)
-
-# Generate unique variants
-variant1 = randomizer.generate_variant()
-variant2 = randomizer.generate_variant()
-# Each variant is slightly different but still looks like Chrome 124
-```
-
-## 🛠 API Reference
-
-### `TLSSession` / `Session` Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `profile` | `str` | `None` | Profile name (e.g., `'chrome_124_linux'`). **New in v2.0** |
-| `fingerprint` | `str` | `'chrome_120'` | Legacy profile name (use `profile` for v2.0 profiles) |
-| `randomize` | `bool` | `False` | Enable fingerprint randomization. **New in v2.0** |
-| `http2_priority` | `str` | `None` | HTTP/2 priority simulation (`'chrome'`, `'firefox'`, `'safari'`). **New in v2.0** |
-| `engine` | `str` | `'auto'` | Networking backend (`'curl'`, `'httpx'`; auto-selects the best installed one) |
-| `randomize_ciphers` | `bool` | `False` | Shuffle cipher suite order |
-| `timeout` | `float` | `30.0` | Request timeout in seconds |
-| `headers` | `dict` | `None` | Custom headers to add |
-| `proxies` | `dict/str` | `None` | Proxy configuration |
-| `rotate_profiles` | `list` | `None` | List of profiles to rotate through on blocks |
-| `on_block` | `str` | `'rotate'` | Action on block (`'rotate'`, `'proxy'`, `'both'`, `'none'`) |
-| `max_retries` | `int` | `2` | Max retry attempts |
-| `site` | `str` | `None` | Site preset (`'cloudflare'`, `'akamai'`) |
-| `proxies_pool` | `list` | `None` | Pool of proxies to rotate |
-| `http2` | `bool` | `None` | Force HTTP/2 |
-| `verify` | `bool` | `True` | Verify SSL certificates |
-| `ghost_mode` | `bool` | `False` | Enable stealth traffic shaping |
-| `rate_limit` | `float` | `None` | Maximum number of requests per second per domain (e.g., `rate_limit=2.0` means up to 2 req/sec). Default is None. |
-| `on_retry` | `callable` | `None` | Callback hook `def on_retry(attempt, response, next_profile):` to log or track rotation events. Default is None. |
-
-### Session Methods
-
-```python
-session = TLSSession(profile='chrome_124_win11')
-
-# HTTP Methods
-session.get(url, **kwargs)
-session.post(url, **kwargs)
-session.put(url, **kwargs)
-session.delete(url, **kwargs)
-session.head(url, **kwargs)
-session.patch(url, **kwargs)
-session.options(url, **kwargs)
-
-# v2.0 Methods
-session.get_fingerprint_info()  # Returns dict with profile details
-session.sync_fingerprint(ja3=..., user_agent=...)  # Manually sync fingerprint
-
-# Cookie Management
-session.save_cookies("cookies.txt")
-session.load_cookies("cookies.txt")
-
-# Session State
-session.export_session()  # Returns dict for persistence
-session.import_session(state)  # Restore from dict
-
-# Forms
-session.submit_form(url, {"username": "x", "password": "y"})
-
-# Human Delays
-session.human_delay(reading_speed="normal")  # 'fast', 'normal', 'slow'
-```
-
-##  AI-Urllib4 Adaptive Features (New!)
-
-TLS-Chameleon now includes "AI-Urllib4" capabilities to intelligently adapt to target sites.
-
-### Domain Memory
-The client automatically "learns" which browser profile works best for a specific domain. If a request succeeds with a specific profile (e.g., `chrome_124_win11`), the client remembers this association. Subsequent requests to the same domain will automatically switch to the known-good profile, regardless of the initial setting.
-
-```python
-from tls_chameleon import TLSSession
-
-# First request: Tries with default profile (e.g., Chrome)
-# If it fails/rotates and eventually succeeds with Firefox, it remembers "example.com -> Firefox"
-with TLSSession() as client:
-    client.get("https://example.com")
-
-# Later...
-# Automatically switches to Firefox for example.com
-with TLSSession() as client:
-    client.get("https://example.com")
-```
-
-### Adaptive Headers
-Headers are no longer static. The client dynamically "morphs" header casing and ordering to match the specific browser profile being used.
-
-- **Chrome/Edge**: Headers are sent in `lowercase` (HTTP/2 standard behavior for Chromium).
-- **Firefox/Safari**: Headers utilize `Title-Case` where appropriate and follow specific ordering (e.g., `Host` first vs. `User-Agent` location).
-
-This prevents detection systems from flagging mismatches between the TLS fingerprint (JA3) and the HTTP header structure.
-
-## 🧲 Magnet Extraction
-
-### AI Extraction (New! ✨)
-Use **Gemini**, **Claude**, or **OpenAI (ChatGPT/Grok)** to extract data intelligently without regex.
-
-```bash
-# Install AI support
-pip install tls-chameleon[ai]
-```
-
-```python
-r = client.get("https://news.ycombinator.com")
-
-# 1. Google Gemini (Default)
-print(r.magnet.ask("Summary", provider="gemini"))
-
-# 2. Anthropic Claude
-print(r.magnet.ask("Summary", provider="anthropic", model="claude-3-opus-20240229"))
-
-# 3. OpenAI / Grok
-# (Set OPENAI_API_KEY or pass api_key=...)
-print(r.magnet.ask("Summary", provider="openai", model="gpt-4o"))
-```
-
-### Standard Extractors
-Don't write regex. Let Magnet do it.
-
-```python
-r = client.get("https://example.com/contact")
-
-emails = r.magnet.emails()        # ['support@example.com']
-tables = r.magnet.tables()        # [['Row1', 'Val1'], ...]
-links  = r.magnet.links()
-forms  = r.magnet.get_forms()     # List of parsed forms
-json_data = r.magnet.json_ld()    # Schema.org data
-```
-
-## 🍪 Cookie Persistence
-
-Save your session to a Netscape-formatted file (compatible with wget/curl) to use later.
-
-```python
-# Save
-client.save_cookies("cookies.txt")
-
-# Load later
-client.load_cookies("cookies.txt")
-```
-
-## 🔄 Auto-Update Fingerprints (Optional)
-
-Fetch the latest fingerprints from online sources:
-
-```python
-from tls_chameleon import FingerprintUpdater
-
-updater = FingerprintUpdater()
-
-# Check for updates (downloads to ~/.tls_chameleon/cache/)
-updated_count = updater.update_gallery()
-print(f"Updated {updated_count} profiles")
-
-# Get cache info
-print(updater.get_cache_info())
-```
-
-## 🆚 Why use this vs curl_cffi?
-
-| Feature | Raw curl_cffi | TLS-Chameleon |
-| :--- | :--- | :--- |
-| **TLS Spoofing** | You must manually set `impersonate="chrome110"` | **45 profiles** with OS-specific variants |
-| **Profile Selection** | Manual | `profile='chrome_124_linux'` |
-| **Fingerprint Variation** | None | `randomize=True` avoids pattern detection |
-| **Asset Loading** | You just get the HTML. | `mimic_assets=True`: Fetches CSS/JS/Images |
-| **Forms** | You must manually parse CSRF tokens | `client.submit_form()`: Auto-handles tokens |
-| **Data Extraction** | Use BeautifulSoup manually | **Magnet Module**: emails, tables, json_ld |
-| **Blocking Recovery** | Manual retry | Auto-rotation on 403/429 |
-
-## 🔧 Advanced Usage
-
-### Multi-OS Scraping
-
-```python
-from tls_chameleon import TLSSession
-
-# Rotate between different OS fingerprints
-profiles = [
-    'chrome_124_win11',
-    'chrome_124_linux',
-    'chrome_124_macos',
-]
-
-for profile in profiles:
-    session = TLSSession(profile=profile, randomize=True)
-    response = session.get("https://target-site.com")
-    print(f"{profile}: {response.status_code}")
-    session.close()
-```
-
-### Cloudflare Bypass with Profile Rotation
-
-```python
-from tls_chameleon import TLSSession
-
-session = TLSSession(
-    profile='chrome_124_win11',
-    site='cloudflare',  # Preset for Cloudflare sites
-    rotate_profiles=[
-        'chrome_124_win11',
-        'chrome_120_linux',
-        'firefox_124_win11',
-    ],
-    on_block='rotate',
-    max_retries=3
-)
-
-response = session.get("https://cloudflare-protected-site.com")
-```
-
-### Async Example
-
-TLS-Chameleon fully supports `asyncio` using `AsyncSession`:
+Async:
 
 ```python
 import asyncio
 from tls_chameleon import AsyncSession
 
 async def main():
-    async with AsyncSession(profile="chrome_130_win11", engine="curl") as session:
-        resp = await session.get("https://tls.peet.ws/api/all")
-        print(resp.json())
+    async with AsyncSession(profile="chrome_130_win11") as session:
+        r = await session.get("https://example.com", trace=True)
+        print(r.trace.protocol, r.trace.timing_ms)
 
 asyncio.run(main())
 ```
 
-### Ghost Mode for Stealth
+CLI:
 
-```python
-session = TLSSession(ghost_mode=True)
-# Automatic random delays (0.5s - 2.0s) between requests
-# Automatic random padding payloads (X-Ghost headers)
-response = session.get("https://example.com")
+```bash
+chameleon inspect https://example.com --json
+chameleon doctor https://example.com --echo-endpoint https://tls.peet.ws/api/clean
+chameleon capture https://tls.peet.ws/api/all --raw --json
+chameleon fingerprint list --browser chrome
+chameleon diff capture_a.json capture_b.json
 ```
 
-### Advanced Recipes
-
-#### 1. Response Caching
-For heavy scraping tasks, caching reduces load and saves bandwidth. You can easily wrap `TLS-Chameleon` with `requests-cache`:
+## 🔬 Fingerprint System
 
 ```python
-import requests_cache
-from tls_chameleon import TLSSession
-
-# TLSChameleon subclasses requests.Session, making it compatible
-session = TLSSession(profile="chrome_130_win11")
-cached_session = requests_cache.CachedSession(
-    'scraper_cache',
-    backend='sqlite',
-    expire_after=3600
+from tls_chameleon import (
+    FingerprintRegistry, validate_fingerprint,
+    FingerprintSimilarity, diff_fingerprints, capture,
 )
-cached_session.send = session.send  # Bind the chameleon engine
+
+reg = FingerprintRegistry()
+fp = reg.get("chrome_120_win11")          # lazy lookup over all built-ins
+
+issues = validate_fingerprint(fp)          # structural + provenance checks
+
+result = FingerprintSimilarity().compare(fp, reg.get("firefox_120_win11"))
+print(result.total, result.layers)         # explainable, weighted scoring
+
+report = diff_fingerprints(fp, reg.get("firefox_120_win11"))
+print(report.to_text())                    # SAME/DIFFERENT per field + score
+
+# Live capture: what does the network ACTUALLY see?
+res = capture(session=client.session)      # via TLS echo endpoint
+print(res.fingerprint.tls.ja3_hash)        # source="captured", timestamped
 ```
 
-#### 2. Playwright Fallback Hook
-When curl_cffi cannot solve a complex JavaScript challenge (like Turnstile), you can use the `on_retry` hook to escalate to Playwright:
+Provenance is explicit — every fingerprint is labeled
+`captured`, `documented` or `synthetic`; synthetic data can never be marked
+verified (enforced by the validator).
+
+## 🩺 Diagnostics
 
 ```python
-from tls_chameleon import get
-from playwright.sync_api import sync_playwright
+from tls_chameleon import inspect_url, doctor
 
-def escalate_to_browser(attempt, response, profile):
-    if attempt >= 2 and response.status_code in (403, 429):
-        print("Falling back to Playwright...")
-        with sync_playwright() as p:
-            browser = p.chromium.launch()
-            page = browser.new_page()
-            page.goto(response.url)
-            # Extracted cookies can be fed back into the session
+print(inspect_url("https://example.com", client).to_text())
 
-get("https://protected.cf", on_retry=escalate_to_browser)
+report = doctor("https://example.com",
+                echo_endpoint="https://tls.peet.ws/api/clean")
+print(report.to_text())
+# [ ✓] Connection: h2 response 200 in 76ms
+# [ ✓] Backend: backend 'curl' performs real TLS impersonation
+# [ ⚠] Fingerprint (JA4): observed JA4 differs from profile ...
+# Verdict: WARN
 ```
 
-#### 3. Connection Pool Sharing
-To share connection pools across multiple profiles (saving memory and sockets), pass a pre-initialized `proxies_pool` or share the underlying `curl_cffi` session:
+Traces attach to responses on demand — headers always redacted:
 
 ```python
-# Share same proxy pool and rotate automatically
-pool = ["http://p1", "http://p2", "http://p3"]
-s1 = TLSSession(profile="chrome_120", proxies_pool=pool)
-s2 = TLSSession(profile="firefox_120", proxies_pool=pool)
+r = client.get(url, trace=True)
+r.trace.backend / .protocol / .timing_ms / .request_headers
 ```
 
-## 🏗️ Architecture
+Unobservable fields stay `None` with an explanatory note — never guessed.
+
+## 🧠 Adaptive Engine
+
+```python
+client = TLSSession(adaptive=True, adaptive_ttl=3600, random_seed=12345)
+
+client.profile_for("example.com")
+# {'profile': 'chrome_130_win11', 'reason': 'learned after 3 successful
+#  request(s); 12s ago', 'confidence': 0.6, 'last_used': ...}
+```
+
+Domain memory is LRU-bounded, TTL-expiring, thread-safe, stores only
+`domain → profile` (never credentials), and explains itself. Same seed +
+config ⇒ byte-identical fingerprint choices for reproducible runs.
+
+## 📚 Profiles
+
+| Browser | Versions | OS |
+|---------|----------|----|
+| Chrome | 120–130, android, latest | win10/win11/macos/linux/android |
+| Firefox | 120–124 | win10/win11/macos/linux |
+| Safari | iOS 16/17, macOS 13/14 | ios/macos |
+| Edge | 120, 124 | win10/win11 |
+
+```bash
+chameleon fingerprint list                # or: list_available_profiles()
+chameleon fingerprint show chrome_130_win11 --json
+chameleon fingerprint validate my_profile.json
+```
+
+Generative fingerprints for research/fuzzing:
+`TLSSession(profile="gen://chrome/win11/124/balanced/7")` — deterministic
+per seed, always labeled `synthetic`.
+
+## 🛠 API Reference (selection)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `profile` | `str` | `None` | Profile name (e.g., `'chrome_124_linux'`) |
+| `engine` | `str` | `'auto'` | `'curl'`, `'native'`, `'httpx'`; auto-selects best installed |
+| `randomize` / `randomize_ciphers` | `bool` | `False` | Variant generation / cipher-order shuffle |
+| `random_seed` | `Any` | `None` | Deterministic randomization seed |
+| `adaptive` / `adaptive_ttl` | `bool` / `float` | `True` / `None` | Domain-memory learning + expiry seconds |
+| `http2` / `http3` | `bool` | `None` | Protocol preferences (backend-dependent) |
+| `verify` | `bool` | `True` | Certificate verification (never disabled silently) |
+| `proxies` / `proxies_pool` | `dict/str/list` | `None` | Proxy config / rotation pool |
+| `rotate_profiles` / `on_block` | `list` / `str` | `None` / `'rotate'` | Block recovery: rotate/proxy/both/none |
+| `rate_limit` | `float` | `None` | Max req/sec per domain |
+| `ghost_mode` | `bool` | `False` | Timing jitter + payload padding |
+
+Handy members: `client.capabilities`, `client.profile_for(domain)`,
+`session.get_fingerprint_info()`, `response.trace`,
+`save_cookies/load_cookies/export_session/import_session`,
+plus the Magnet extractors (`response.magnet.*`) and `submit_form()`.
+
+## 🖥 CLI
+
+| Command | Purpose | Exit codes |
+|---|---|---|
+| `chameleon get URL [--trace]` | Spoofed request, redacted output | 0 ok / 1 error |
+| `chameleon inspect URL` | One-request structured report | 0 / 1 |
+| `chameleon doctor URL` | Connection/backend/profile/header checks | 0 (warn ok) / 1 fail |
+| `chameleon capture [URL]` | Network-observed fingerprint | 0 / 1 |
+| `chameleon diff A.json B.json` | Field-level fingerprint diff | 0 / 1 |
+| `chameleon fingerprint list\|show\|validate` | Registry operations | 0 / 1 |
+| `chameleon benchmark` | Reproducible local benchmarks | 0 / 3* |
+| `chameleon version` | Version info | 0 |
+
+All major commands accept `--json` with stable, documented schemas.
+(*3 = feature pending its phase.)
+
+## 📊 Benchmarks
+
+Real local-server measurements only — methodology and limitations in
+[`docs/BENCHMARK_METHODOLOGY.md`](docs/BENCHMARK_METHODOLOGY.md), a labeled
+sample run in [`docs/BENCHMARK_SNAPSHOT.md`](docs/BENCHMARK_SNAPSHOT.md).
+Absolute numbers are machine-specific; compare within a single report.
+
+## 📖 Documentation
+
+| Doc | Contents |
+|---|---|
+| [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md) | v2 audit + v3 migration plan |
+| [`docs/NATIVE_BACKEND_RESEARCH.md`](docs/NATIVE_BACKEND_RESEARCH.md) | backend candidates, decision record |
+| [`docs/BENCHMARK_METHODOLOGY.md`](docs/BENCHMARK_METHODOLOGY.md) | what the benchmark measures |
+| [`docs/migration/curl_cffi.md`](docs/migration/curl_cffi.md) | coming from raw curl_cffi |
+| `CHANGELOG.md` | full v3.0.0 change list |
 
 ## 🤝 Contributing
 Issues and Pull Requests welcome!
 
 ## 🌟 Credits
-Special thanks to [curl_cffi](https://github.com/lexiforest/curl_cffi) for the amazing low-level TLS spoofing capabilities that power this library.
+Built on [curl_cffi](https://github.com/lexiforest/curl_cffi),
+[primp](https://github.com/deedy5/primp), and
+[httpx](https://github.com/encode/httpx).
 
 ## ☕ Support / Donate
 If you found this library useful, buy me a coffee!
