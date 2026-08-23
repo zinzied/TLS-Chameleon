@@ -130,7 +130,7 @@ from .randomizer import derive_seed_rng
 from .client import Chameleon
 from .async_client import AsyncChameleon
 
-__version__ = "3.1.0"
+__version__ = "3.1.1"
 
 __all__ = [
     # Core classes

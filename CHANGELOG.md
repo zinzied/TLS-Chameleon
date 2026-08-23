@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## v3.1.1
+- Docs-only release: README updated for v3.1 — Chameleon/AsyncChameleon API,
+  owned response surface, ProxyConfig/SessionState, compare-backends,
+  expanded capabilities, research docs index. No code changes.
+
 ## v3.1.0 — Architecture Evolution & Independence
 
 Audit-first release: `docs/ARCHITECTURE_AUDIT_3_0_1.md` maps the 3.1
