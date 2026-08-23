@@ -27,3 +27,6 @@ wheels/
 .env
 .cache/
 .pytest_cache/
+_*.py
+_out.txt
+*.egg-info/

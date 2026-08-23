@@ -10,14 +10,18 @@ import http.cookiejar
 import os
 import copy
 import logging
+import collections
+import concurrent.futures
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Global bounded pool for background asset prefetching
+_ASSET_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+
 logger = logging.getLogger(__name__)
 
-# Global Domain Memory (Simple In-Memory Cache)
+# Global Domain Memory with maxlen=1000 to prevent unbounded growth
 # Maps domain -> successful_profile_name
-_DOMAIN_MEMORY: Dict[str, str] = {}
+_DOMAIN_MEMORY: collections.OrderedDict[str, str] = collections.OrderedDict()
+_DOMAIN_MEMORY_MAX = 1000
 _DOMAIN_MEMORY_LOCK = threading.Lock()
 
 from .profiles import PROFILES, DEFAULT_PROFILE, get_profile as profiles_get_profile
@@ -72,6 +76,15 @@ def _get_profile(name: Optional[str], use_gallery: bool = True) -> Dict[str, Any
     if not name:
         name = DEFAULT_PROFILE
     
+    # Generative engine: resolve gen:// scheme into a synthesized fingerprint
+    if isinstance(name, str) and name.startswith("gen://"):
+        try:
+            from .gen_fingerprint import resolve_gen_profile
+            return resolve_gen_profile(name)
+        except Exception as e:
+            logger.warning(f"Generative profile failed ({e}); using default.")
+            name = DEFAULT_PROFILE
+    
     # Try new gallery first
     if use_gallery and HAS_GALLERY:
         profile = gallery_get_profile(name)
@@ -88,6 +101,8 @@ def _get_profile(name: Optional[str], use_gallery: bool = True) -> Dict[str, Any
 
 def _cipher_list(profile: Dict[str, Any], randomize: bool) -> Optional[str]:
     ciphers = list(profile.get("tls12_ciphers") or [])
+    # Drop any GREASE markers (e.g. "grease_2570") -- not valid OpenSSL names
+    ciphers = [c for c in ciphers if not str(c).startswith("grease_")]
     if not ciphers:
         return None
     if randomize:
@@ -160,6 +175,7 @@ class TLSChameleon:
         proxies_pool: Optional[List[str]] = None,
         header_order: Optional[List[str]] = None,
         http2: Optional[bool] = None,
+        http3: Optional[bool] = None,
         verify: bool = True,
         ghost_mode: bool = False,
     ) -> None:
@@ -199,6 +215,7 @@ class TLSChameleon:
         self.proxies_pool = proxies_pool
         self.header_order = header_order
         self.http2 = http2
+        self.http3 = http3
         self.verify = verify
         self.ghost_mode = ghost_mode
         
@@ -300,12 +317,25 @@ class TLSChameleon:
                     logger.debug(f"Failed to set ciphers for httpx: {e}")
             
             # Create client with the configured SSL context
-            self.session = httpx.Client(
-                http2=bool(self.http2) if self.http2 is not None else False,
-                timeout=self.timeout,
-                verify=ssl_context,
-                follow_redirects=True
-            )
+            # Try to enable HTTP/3 if requested and supported by installed httpx
+            http2_flag = bool(self.http2) if self.http2 is not None else False
+            http3_flag = bool(self.http3) if self.http3 is not None else False
+            try:
+                self.session = httpx.Client(
+                    http2=http2_flag,
+                    http3=http3_flag,
+                    timeout=self.timeout,
+                    verify=ssl_context,
+                    follow_redirects=True
+                )
+            except TypeError:
+                # Older httpx doesn't support http3 kwarg; fall back
+                self.session = httpx.Client(
+                    http2=http2_flag,
+                    timeout=self.timeout,
+                    verify=ssl_context,
+                    follow_redirects=True
+                )
             self.session.headers.update(self.headers)
             if self.proxies:
                 self.session.proxies = self._normalize_proxy_for_httpx(self.proxies)
@@ -324,6 +354,8 @@ class TLSChameleon:
     
     def _profile_exists(self, name: str) -> bool:
         """Check if a profile exists in either legacy or gallery profiles."""
+        if isinstance(name, str) and name.startswith("gen://"):
+            return True
         if name in PROFILES:
             return True
         if HAS_GALLERY and name in FINGERPRINT_GALLERY:
@@ -349,6 +381,7 @@ class TLSChameleon:
             "randomized": self.randomize,
             "http2_priority": self.http2_priority,
             "engine": self.engine,
+            "http3": bool(self.http3) if hasattr(self, 'http3') else False,
         }
         
         # Add Sec-CH-UA if present
@@ -473,13 +506,14 @@ class TLSChameleon:
                     if domain not in _DOMAIN_MEMORY or _DOMAIN_MEMORY[domain] != self.profile_name:
                         logger.info(f"Domain Memory: Learning profile '{self.profile_name}' works for {domain}")
                         _DOMAIN_MEMORY[domain] = self.profile_name
+                        _DOMAIN_MEMORY.move_to_end(domain)
+                        while len(_DOMAIN_MEMORY) > _DOMAIN_MEMORY_MAX:
+                            _DOMAIN_MEMORY.popitem(last=False)
                 return resp
-            
+
             if attempt >= self.max_retries:
                  return resp
 
-            # Blocking Logic
-            
             # Blocking Logic
             attempt += 1
             if self.on_block in {"rotate", "both"}:
@@ -562,11 +596,14 @@ class TLSChameleon:
             return
         self._proxy_index = (self._proxy_index + 1) % len(self.proxies_pool)
 
-    def _current_proxy(self):
+    def _current_proxy(self) -> Optional[Dict[str, str]]:
         if self.proxies_pool and len(self.proxies_pool) > 0:
             if self._proxy_index < 0:
                 self._proxy_index = 0
-            return self.proxies_pool[self._proxy_index]
+            p = self.proxies_pool[self._proxy_index]
+            if isinstance(p, str):
+                return {"http": p, "https": p}
+            return p
         return self.proxies or None
 
     def _normalize_proxy_for_httpx(self, proxy):
@@ -686,6 +723,19 @@ class TLSChameleon:
 
     def export_session(self) -> Dict[str, Any]:
         """Returns the full state of the session for persistence."""
+        cookies_list = []
+        if self.session and hasattr(self.session, "cookies"):
+            iterator = getattr(self.session.cookies, "jar", self.session.cookies)
+            for c in iterator:
+                cookies_list.append({
+                    "name": getattr(c, "name", ""),
+                    "value": getattr(c, "value", ""),
+                    "domain": getattr(c, "domain", ""),
+                    "path": getattr(c, "path", "/"),
+                    "secure": getattr(c, "secure", False),
+                    "expires": getattr(c, "expires", None)
+                })
+
         return {
             "profile_name": self.profile_name,
             "engine": self.engine,
@@ -693,8 +743,8 @@ class TLSChameleon:
             "headers": self.headers,
             "rotate_index": self._rotate_index,
             "proxy_index": self._proxy_index,
-            # We don't export cookies here as load/save_cookies handle files, 
-            # but we could return them as a list.
+            "http3": bool(self.http3) if hasattr(self, 'http3') else False,
+            "cookies": cookies_list,
         }
 
     def import_session(self, state: Dict[str, Any]) -> None:
@@ -707,20 +757,29 @@ class TLSChameleon:
         self._proxy_index = state.get("proxy_index", -1)
         self._init_session()
 
-    def save_cookies(self, filename: str, format: str = "netscape") -> None:
+        for c in state.get("cookies", []):
+            if self.session and hasattr(self.session, "cookies"):
+                self.session.cookies.set(
+                    c["name"],
+                    c["value"],
+                    domain=c.get("domain"),
+                    path=c.get("path", "/")
+                )
+
+    def save_cookies(self, filename: str, cookie_format: str = "netscape") -> None:
         """
         Saves the current session cookies to a file.
-        
+
         Args:
             filename: Path to the cookie file.
-            format: "netscape" (default) or "json".
+            cookie_format: "netscape" (default) or "json".
         """
         if not self.session:
             return
 
-        if format == "netscape":
+        if cookie_format == "netscape":
             cj = http.cookiejar.MozillaCookieJar(filename)
-            
+
             # Identify the iterator that yields actual Cookie objects
             # httpx.Cookies iterates keys (strings), but has .jar (CookieJar)
             # requests/curl_cffi RequestCookieJar iterates cookies
@@ -736,15 +795,15 @@ class TLSChameleon:
                 else:
                     # Convert generic object (like httpx.Cookie) to http.cookiejar.Cookie
                     c = http.cookiejar.Cookie(
-                        version=0, 
-                        name=getattr(cookie, "name", ""), 
+                        version=0,
+                        name=getattr(cookie, "name", ""),
                         value=getattr(cookie, "value", ""),
-                        port=None, 
+                        port=None,
                         port_specified=False,
-                        domain=getattr(cookie, "domain", ""), 
-                        domain_specified=bool(getattr(cookie, "domain", "")), 
+                        domain=getattr(cookie, "domain", ""),
+                        domain_specified=bool(getattr(cookie, "domain", "")),
                         domain_initial_dot=False,
-                        path=getattr(cookie, "path", "/"), 
+                        path=getattr(cookie, "path", "/"),
                         path_specified=bool(getattr(cookie, "path", "/")),
                         secure=getattr(cookie, "secure", False),
                         expires=getattr(cookie, "expires", None),
@@ -755,12 +814,12 @@ class TLSChameleon:
                         rfc2109=False,
                     )
                     cj.set_cookie(c)
-                    
+
             cj.save(ignore_discard=True, ignore_expires=True)
-            
-        elif format == "json":
+
+        elif cookie_format == "json":
             cookies_list = []
-            
+
             if hasattr(self.session.cookies, "jar"):
                 cookie_iterator = self.session.cookies.jar
             else:
@@ -778,34 +837,34 @@ class TLSChameleon:
             with open(filename, "w") as f:
                 json.dump(cookies_list, f, indent=2)
         else:
-            raise ValueError(f"Unknown cookie format: {format}")
+            raise ValueError(f"Unknown cookie format: {cookie_format}")
 
-    def load_cookies(self, filename: str, format: str = "netscape") -> None:
+    def load_cookies(self, filename: str, cookie_format: str = "netscape") -> None:
         """
         Loads cookies from a file into the session.
-        
+
         Args:
             filename: Path to the cookie file.
-            format: "netscape" (default) or "json".
+            cookie_format: "netscape" (default) or "json".
         """
         if not os.path.exists(filename):
             return
-            
+
         if not self.session:
             self._init_session()
 
-        if format == "netscape":
+        if cookie_format == "netscape":
             cj = http.cookiejar.MozillaCookieJar(filename)
             cj.load(ignore_discard=True, ignore_expires=True)
             for cookie in cj:
                 self.session.cookies.set(
-                    cookie.name, 
-                    cookie.value, 
-                    domain=cookie.domain, 
+                    cookie.name,
+                    cookie.value,
+                    domain=cookie.domain,
                     path=cookie.path
                 )
-                
-        elif format == "json":
+
+        elif cookie_format == "json":
             with open(filename, "r") as f:
                 cookies_list = json.load(f)
                 for c in cookies_list:
@@ -816,7 +875,7 @@ class TLSChameleon:
                         path=c.get("path", "/")
                     )
         else:
-            raise ValueError(f"Unknown cookie format: {format}")
+            raise ValueError(f"Unknown cookie format: {cookie_format}")
 
     def submit_form(self, url: str, data: Dict[str, str], form_selector: int = 0, **kwargs):
         """
@@ -885,13 +944,9 @@ class TLSChameleon:
             except Exception:
                 pass
 
-        # Limit to first N assets to avoid flooding?
-        # Browser fetches many in parallel.
-        # We spawn threads
-        for asset in list(assets)[:20]: # Cap at 20 assets
-            t = threading.Thread(target=fetch, args=(asset,))
-            t.daemon = True
-            t.start()
+        # Submit to bounded thread pool
+        for asset in list(assets)[:10]:
+            _ASSET_EXECUTOR.submit(fetch, asset)
 
     # Method aliases for compatibility
     def get(self, url: str, **kwargs: Any):

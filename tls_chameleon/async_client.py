@@ -60,6 +60,7 @@ class AsyncTLSChameleon:
         proxies_pool: Optional[List[str]] = None,
         header_order: Optional[List[str]] = None,
         http2: Optional[bool] = None,
+        http3: Optional[bool] = None,
         verify: bool = True,
         ghost_mode: bool = False,
     ) -> None:
@@ -90,6 +91,7 @@ class AsyncTLSChameleon:
         self.proxies_pool = proxies_pool
         self.header_order = header_order
         self.http2 = http2
+        self.http3 = http3
         self.verify = verify
         self.ghost_mode = ghost_mode
         self.headers = headers or {}
@@ -145,12 +147,26 @@ class AsyncTLSChameleon:
                 except Exception:
                     pass
                     
-            self.session = httpx.AsyncClient(
-                http2=bool(self.http2) if self.http2 is not None else False,
-                timeout=self.timeout,
-                verify=ssl_context,
-                follow_redirects=True
-            )
+            # Try to enable HTTP/3 if requested and supported by installed httpx
+            http2_flag = bool(self.http2) if self.http2 is not None else False
+            http3_flag = bool(self.http3) if self.http3 is not None else False
+            try:
+                # Newer httpx versions accept http3 parameter when installed with http3 extras
+                self.session = httpx.AsyncClient(
+                    http2=http2_flag,
+                    http3=http3_flag,
+                    timeout=self.timeout,
+                    verify=ssl_context,
+                    follow_redirects=True
+                )
+            except TypeError:
+                # Older httpx doesn't accept http3 parameter; fall back to http2/http1 only
+                self.session = httpx.AsyncClient(
+                    http2=http2_flag,
+                    timeout=self.timeout,
+                    verify=ssl_context,
+                    follow_redirects=True
+                )
             if self.proxies:
                 self.session.proxies = {k: v for k, v in self.proxies.items()}
         else:
@@ -224,5 +240,20 @@ class AsyncTLSChameleon:
 
     async def post(self, url: str, **kwargs: Any):
         return await self.request("POST", url, **kwargs)
+
+    async def put(self, url: str, **kwargs: Any):
+        return await self.request("PUT", url, **kwargs)
+
+    async def delete(self, url: str, **kwargs: Any):
+        return await self.request("DELETE", url, **kwargs)
+
+    async def head(self, url: str, **kwargs: Any):
+        return await self.request("HEAD", url, **kwargs)
+
+    async def patch(self, url: str, **kwargs: Any):
+        return await self.request("PATCH", url, **kwargs)
+
+    async def options(self, url: str, **kwargs: Any):
+        return await self.request("OPTIONS", url, **kwargs)
 
 AsyncSession = AsyncTLSChameleon

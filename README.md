@@ -39,6 +39,13 @@ Anti-Fingerprinting HTTP client that spoofs real browser TLS fingerprints with a
 - **Header Morphing (Pro) 🧬**: Dynamic casing and ordering to match specific browser signatures perfectly.
 - **Deep Extract (Pro) 🕵️**: Find hidden JWTs, API keys, and JS configs in any page.
 
+### What's New in v2.2.0
+*   **Generative Fingerprint Engine**: Synthesize brand-new, cryptographically valid JA3/JA4 fingerprints on the fly using `gen://` URIs.
+*   **Async Parity**: Full HTTP method support (`get`, `post`, `put`, `delete`, `head`, `patch`, `options`) on `AsyncSession`.
+*   **Session State Persistence**: Full export/import including active cookies and proxy state.
+*   **Bounded Domain Memory**: High-performance LRU memory cache prevents memory leaks in long-running scrapers.
+*   **Thread-Safe Asset Mimicking**: Bounded thread pool for static asset prefetching.
+
 ### What's New in v2.1.0
 *   **AI-Urllib4 Adaptive Features:** Domain Memory (auto-profile learning) and Adaptive Headers (dynamic casing/ordering to match profile).
 *   **Fingerprint Gallery:** Over 45+ meticulously crafted browser profiles (Chrome 120-130, Firefox 120-124, Safari, Edge) across Windows, macOS, Linux, and Mobile.
@@ -53,9 +60,11 @@ You can install `TLS-Chameleon` directly from PyPI:
 
 ```bash
 pip install tls-chameleon[curl]
+# or to enable HTTP/3 (QUIC) support when available:
+# pip install tls-chameleon[http3]
 ```
 
-> **Note**: The `[curl]` extra is required for TLS fingerprint spoofing.
+> **Note**: The `[curl]` extra is required for TLS fingerprint spoofing. The `http3` extra installs httpx's HTTP/3 support (aioquic) when available; HTTP/3 support in Python depends on the httpx/httpcore/aioquic stack and may be best-effort on some platforms.
 
 ## ⚡ Quick Start
 

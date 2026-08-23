@@ -144,17 +144,19 @@ class FingerprintRandomizer:
     
     def _randomize_ciphers(self, ciphers: List[str]) -> List[str]:
         """
-        Shuffle cipher suite order (only for browsers that allow it).
-        
-        Most modern browsers have fixed cipher order.
+        Apply slight local permutations to ciphers within compatibility blocks.
+
+        Avoid full shuffles to maintain realistic fingerprint structures.
         """
-        if not ciphers:
+        if not ciphers or len(ciphers) < 2:
             return ciphers
-        
-        # Create a shuffled copy
-        shuffled = list(ciphers)
-        random.shuffle(shuffled)
-        return shuffled
+
+        res = list(ciphers)
+        # Swap adjacent elements within the middle section only
+        if len(res) > 3:
+            idx = random.randint(1, len(res) - 2)
+            res[idx], res[idx + 1] = res[idx + 1], res[idx]
+        return res
     
     @staticmethod
     def get_random_screen_resolution() -> Tuple[int, int]:

@@ -14,19 +14,21 @@ v2.0 Features:
 """
 
 from .client import (
-    TLSChameleon, 
+    TLSChameleon,
     Session,
     TLSSession,  # New v2.0: recommended alias
-    request, 
-    get, 
-    post, 
-    put, 
-    delete, 
-    head, 
-    patch, 
+    request,
+    get,
+    post,
+    put,
+    delete,
+    head,
+    patch,
     options,
     list_available_profiles,  # New v2.0
+    ChameleonResponse,
 )
+from .magnet import Magnet
 
 from .async_client import AsyncTLSChameleon, AsyncSession
 
@@ -45,6 +47,20 @@ except ImportError:
     FINGERPRINT_GALLERY = {}
     get_profile = None
 
+# Generative Fingerprint Engine (private enhancement)
+try:
+    from .gen_fingerprint import (
+        generate_fingerprint,
+        generate_batch,
+        generate_profile,
+        resolve_gen_profile,
+        parse_gen_spec,
+        is_gen_profile,
+        GeneratedFingerprint,
+    )
+except ImportError:
+    generate_fingerprint = None
+
 try:
     from .http2_simulator import HTTP2Profile, get_http2_profile
 except ImportError:
@@ -60,13 +76,15 @@ try:
 except ImportError:
     FingerprintUpdater = None
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 
 __all__ = [
     # Core classes
     "TLSChameleon",
     "Session",
     "TLSSession",
+    "ChameleonResponse",
+    "Magnet",
 
     # Async core classes
     "AsyncTLSChameleon",
@@ -99,6 +117,15 @@ __all__ = [
     # Randomization
     "FingerprintRandomizer",
     "create_variant_profile",
+    
+    # Generative Fingerprint Engine
+    "generate_fingerprint",
+    "generate_batch",
+    "generate_profile",
+    "resolve_gen_profile",
+    "parse_gen_spec",
+    "is_gen_profile",
+    "GeneratedFingerprint",
     
     # Auto-update
     "FingerprintUpdater",

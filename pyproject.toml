@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tls-chameleon"
-version = "2.1.1"
+version = "2.2.0"
 description = "Anti-Fingerprint HTTP Client Spoofing TLS/HTTP2 profiles"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.26.0",
+  "cryptography>=3.4.0",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +39,9 @@ ai = [
 ]
 updater = [
   "httpx>=0.26.0",
+]
+http3 = [
+  "httpx[http3]>=0.26.0"
 ]
 all = [
   "curl_cffi>=0.6.0",
