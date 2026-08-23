@@ -124,7 +124,7 @@ from .security.redaction import (
 from .adaptive import DomainMemory, DEFAULT_DOMAIN_MEMORY_MAX
 from .randomizer import derive_seed_rng
 
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 
 __all__ = [
     # Core classes

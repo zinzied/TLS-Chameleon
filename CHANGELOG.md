@@ -1,6 +1,11 @@
 # CHANGELOG
 
-# v3.0.0 — pending release
+## v3.0.1
+- Docs-only release: README fully rewritten for v3 — honest IS/IS-NOT
+  positioning, three-backend architecture, fingerprint system / diagnostics /
+  adaptive engine / CLI sections, benchmarks and docs index. No code changes.
+
+# v3.0.0 — released 2026-08-23
 
 ## Phase 8 — Native Backend Implementation)
 - Added `transport/primp_backend.py` (`PrimpTransport`, backend name
