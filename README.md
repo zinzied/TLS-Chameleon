@@ -17,6 +17,28 @@ requests-like API.
 > an anonymity or stealth product. Detection outcomes depend on many factors
 > outside any client library's control.
 
+## 🆕 What's New in v3.1.0
+
+- **`Chameleon` / `AsyncChameleon`** — the spec'd high-level API: WHAT vs HOW separation.
+
+  ```python
+  from tls_chameleon import Chameleon
+  client = Chameleon(profile="chrome_124_linux", backend="curl", seed=42)
+  r = client.get("https://example.com")
+  ```
+
+- **Owned response objects** — responses no longer proxy backend internals;
+  an explicit surface (`status_code/text/content/headers/cookies/url/history/
+  ok/json()/raise_for_status()` + `.magnet/.trace`) with self-documenting errors.
+- **`ProxyConfig`** — typed proxy description (`str` | dict | dataclass), normalized once.
+- **`SessionState`** — backend-independent session snapshots.
+- **Expanded truthful capabilities** — every backend now reports
+  `http1`, `tls_customization`, `websocket`, `fingerprint_capture` too.
+- **`chameleon compare-backends`** — alias of the benchmark runner for
+  curl/native/httpx comparison.
+- **`docs/research/`** — protocol & fingerprint analyses produced with our own tooling.
+- `seed=` accepted everywhere as alias of `random_seed=`.
+
 ## 🆕 What's New in v3.0.0
 
 - **Pluggable transport architecture** — `curl`, `native` (primp/rustls) and
@@ -100,14 +122,17 @@ via `tls_chameleon.transport.register_transport`.
 ## ⚡ Quick Start
 
 ```python
-from tls_chameleon import TLSSession
+from tls_chameleon import Chameleon          # v3.1 high-level API
 
-with TLSSession(profile="chrome_130_win11") as client:
-    r = client.get("https://example.com")
-    print(r.status_code, r.text[:80])
-    print(client.engine)                 # which backend served this?
-    print(client.capabilities.to_dict()) # what can it really do?
+client = Chameleon(profile="chrome_130_win11")   # WHAT: the fingerprint
+                                                 # backend auto-selected: HOW
+with client:
+    r = client.get("https://example.com", trace=True)
+    print(r.status_code, r.trace.protocol)
+    print(client.capabilities.to_dict())
 ```
+
+Classic aliases still work: `TLSSession` / `Session` / `AsyncSession`.
 
 Async:
 
@@ -223,10 +248,10 @@ per seed, always labeled `synthetic`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `profile` | `str` | `None` | Profile name (e.g., `'chrome_124_linux'`) |
-| `engine` | `str` | `'auto'` | `'curl'`, `'native'`, `'httpx'`; auto-selects best installed |
+| `profile` | `str` | `None` | Profile name (e.g., `'chrome_124_linux'`) — the WHAT |
+| `backend` / `engine` | `str` | `'auto'` | The HOW: `'curl'`, `'native'`, `'httpx'`; auto-selects best installed (`backend=` on `Chameleon`, `engine=` everywhere) |
+| `random_seed` / `seed` | `Any` | `None` | Deterministic randomization seed (`seed=` on `Chameleon`) |
 | `randomize` / `randomize_ciphers` | `bool` | `False` | Variant generation / cipher-order shuffle |
-| `random_seed` | `Any` | `None` | Deterministic randomization seed |
 | `adaptive` / `adaptive_ttl` | `bool` / `float` | `True` / `None` | Domain-memory learning + expiry seconds |
 | `http2` / `http3` | `bool` | `None` | Protocol preferences (backend-dependent) |
 | `verify` | `bool` | `True` | Certificate verification (never disabled silently) |
@@ -251,6 +276,7 @@ plus the Magnet extractors (`response.magnet.*`) and `submit_form()`.
 | `chameleon diff A.json B.json` | Field-level fingerprint diff | 0 / 1 |
 | `chameleon fingerprint list\|show\|validate` | Registry operations | 0 / 1 |
 | `chameleon benchmark` | Reproducible local benchmarks | 0 / 3* |
+| `chameleon compare-backends` | Same runner — curl vs native vs httpx | 0 / 3* |
 | `chameleon version` | Version info | 0 |
 
 All major commands accept `--json` with stable, documented schemas.
@@ -267,11 +293,13 @@ Absolute numbers are machine-specific; compare within a single report.
 
 | Doc | Contents |
 |---|---|
+| [`docs/ARCHITECTURE_AUDIT_3_0_1.md`](docs/ARCHITECTURE_AUDIT_3_0_1.md) | 3.1 spec-to-code audit (gaps M1–M8) |
 | [`docs/ARCHITECTURE_AUDIT.md`](docs/ARCHITECTURE_AUDIT.md) | v2 audit + v3 migration plan |
+| [`docs/research/index.md`](docs/research/index.md) | fingerprint & protocol analyses (JA4, H2) |
 | [`docs/NATIVE_BACKEND_RESEARCH.md`](docs/NATIVE_BACKEND_RESEARCH.md) | backend candidates, decision record |
 | [`docs/BENCHMARK_METHODOLOGY.md`](docs/BENCHMARK_METHODOLOGY.md) | what the benchmark measures |
 | [`docs/migration/curl_cffi.md`](docs/migration/curl_cffi.md) | coming from raw curl_cffi |
-| `CHANGELOG.md` | full v3.0.0 change list |
+| `CHANGELOG.md` | full v3.x change list |
 
 ## 🤝 Contributing
 Issues and Pull Requests welcome!
